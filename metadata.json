@@ -1,0 +1,5 @@
+{
+  "name": "OutboundFlow - Instantly Webhook Clone",
+  "description": "A cold email automation platform clone that integrates with external AI via webhooks (e.g., n8n) to dynamically generate and send personalized emails for each lead in a sequence.",
+  "requestFramePermissions": []
+}
