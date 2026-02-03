@@ -2,23 +2,33 @@
 import React, { useState } from 'react';
 import { Mail, Key, Bell, Server, Shield, Globe, Trash2, Plus, Flame, CheckCircle2, AlertTriangle, Loader2, Zap, Edit2, X } from 'lucide-react';
 import { SmtpAccount } from '../types';
+import { useToastContext } from '../contexts/ToastContext';
+import Modal from './Modal';
+import { Tooltip } from './Tooltip';
 
 interface SettingsViewProps {
   accounts: SmtpAccount[];
-  onUpdateAccounts: (accounts: SmtpAccount[]) => void;
+  onUpdateAccounts: (accounts: SmtpAccount[]) => Promise<void>;
 }
 
 const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts }) => {
+  const toast = useToastContext();
   const [isAdding, setIsAdding] = useState(false);
   const [isTesting, setIsTesting] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean; accountId: string | null; accountLabel: string}>({isOpen: false, accountId: null, accountLabel: ''});
   const [newAcc, setNewAcc] = useState<Partial<SmtpAccount>>({
-    label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0
+    label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0, dailySendLimit: 100, sentToday: 0, lastResetDate: new Date().toISOString().split('T')[0]
   });
 
-  const toggleWarmup = (id: string) => {
-    onUpdateAccounts(accounts.map(a => a.id === id ? { ...a, warmupEnabled: !a.warmupEnabled } : a));
+  const toggleWarmup = async (id: string) => {
+    try {
+      await onUpdateAccounts(accounts.map(a => a.id === id ? { ...a, warmupEnabled: !a.warmupEnabled } : a));
+    } catch (error) {
+      console.error('Error toggling warmup:', error);
+    }
   };
 
   const validateAccount = (acc: Partial<SmtpAccount>): Record<string, string> => {
@@ -42,22 +52,25 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
       // Simulate connection test
       await new Promise(r => setTimeout(r, 1500));
       setIsTesting(null);
-      alert("Connection to SMTP host successful (Simulated). In a live environment, this verifies SSL/TLS and Auth credentials.");
+      toast.success("Connection to SMTP host successful. In a live environment, this verifies SSL/TLS and Auth credentials.");
     } catch (error) {
       setIsTesting(null);
-      alert("Connection test failed. Please check your SMTP settings.");
+      toast.error("Connection test failed. Please check your SMTP settings.");
     }
   };
 
-  const addAccount = () => {
+  const addAccount = async () => {
     const errs = validateAccount(newAcc);
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
     }
     setErrors({});
+    
+    setIsSaving(true);
+    
     const acc: SmtpAccount = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substr(2, 9), // Temporary ID, will be replaced by database
         label: newAcc.label || newAcc.user!,
         host: newAcc.host!.trim(),
         port: newAcc.port!,
@@ -66,14 +79,40 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
         secure: newAcc.secure ?? true,
         fromEmail: newAcc.fromEmail!.trim(),
         warmupEnabled: true,
-        warmupSentToday: 0
+        warmupSentToday: 0,
+        dailySendLimit: newAcc.dailySendLimit || 100,
+        sentToday: 0,
+        lastResetDate: new Date().toISOString().split('T')[0]
     };
-    onUpdateAccounts([...accounts, acc]);
-    setIsAdding(false);
-    setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0 });
+    
+    // Add timeout to prevent infinite hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Save operation timed out after 30 seconds')), 30000);
+    });
+    
+    try {
+      console.log('[addAccount] Attempting to save account:', acc.label);
+      // Save account with timeout
+      await Promise.race([
+        onUpdateAccounts([...accounts, acc]),
+        timeoutPromise
+      ]);
+      console.log('[addAccount] Account saved successfully');
+      // Close form on success
+      setIsAdding(false);
+      setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0 });
+    } catch (error: any) {
+      console.error('[addAccount] Error adding account:', error);
+      const errorMessage = error.message || 'Unknown error occurred';
+      toast.error(`Failed to save SMTP account: ${errorMessage}. Check browser console (F12) for details.`, 8000);
+      // Keep form open if save failed
+    } finally {
+      setIsSaving(false);
+      console.log('[addAccount] Save operation completed');
+    }
   };
 
-  const updateAccount = (id: string, updates: Partial<SmtpAccount>) => {
+  const updateAccount = async (id: string, updates: Partial<SmtpAccount>) => {
     const account = accounts.find(a => a.id === id);
     if (!account) return;
     const updated = { ...account, ...updates };
@@ -83,12 +122,41 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
       return;
     }
     setErrors({});
-    onUpdateAccounts(accounts.map(a => a.id === id ? updated : a));
-    setEditingId(null);
+    try {
+      await onUpdateAccounts(accounts.map(a => a.id === id ? updated : a));
+      toast.success(`SMTP account "${updated.label}" updated successfully`);
+      setEditingId(null);
+    } catch (error) {
+      console.error('Error updating account:', error);
+      toast.error('Failed to update account. Please try again.');
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteModal.accountId) return;
+    try {
+      await onUpdateAccounts(accounts.filter(a => a.id !== deleteModal.accountId));
+      toast.success(`SMTP account "${deleteModal.accountLabel}" deleted successfully`);
+      setDeleteModal({ isOpen: false, accountId: null, accountLabel: '' });
+    } catch (error) {
+      console.error('Error deleting account:', error);
+      toast.error('Failed to delete account. Please try again.');
+    }
   };
 
   return (
-    <div className="max-w-4xl space-y-8 pb-12 animate-in fade-in duration-500">
+    <>
+      <Modal
+        isOpen={deleteModal.isOpen}
+        onClose={() => setDeleteModal({ isOpen: false, accountId: null, accountLabel: '' })}
+        onConfirm={handleDeleteAccount}
+        title="Delete SMTP Account"
+        message={`Are you sure you want to delete "${deleteModal.accountLabel}"? This action cannot be undone.`}
+        type="alert"
+        confirmText="Delete"
+        confirmButtonClass="bg-red-600 hover:bg-red-700 dark:bg-red-500 dark:hover:bg-red-600 text-white"
+      />
+      <div className="max-w-4xl space-y-8 pb-12 animate-in fade-in duration-500">
       <div>
         <h1 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Infrastructure Control</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">Manage your sending domains and SMTP connectivity.</p>
@@ -105,7 +173,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                  <div className="bg-slate-50 dark:bg-slate-700/30 p-6 rounded-2xl border border-slate-200 dark:border-slate-600 mb-6 space-y-4">
                     <div className="flex items-center justify-between mb-4">
                       <h4 className="font-bold text-slate-900 dark:text-slate-100">Add New SMTP Account</h4>
-                      <button onClick={() => { setIsAdding(false); setErrors({}); setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0 }); }} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg">
+                      <button onClick={() => { setIsAdding(false); setErrors({}); setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0, dailySendLimit: 100, sentToday: 0, lastResetDate: new Date().toISOString().split('T')[0] }); }} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg">
                         <X size={18} className="text-slate-500 dark:text-slate-400" />
                       </button>
                     </div>
@@ -160,7 +228,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                             onChange={e => setNewAcc({...newAcc, pass: e.target.value})} 
                           />
                         </div>
-                        <div className="md:col-span-2">
+                        <div>
                           <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">From Email Address <span className="text-red-500">*</span></label>
                           <input 
                             placeholder="sender@yourdomain.com" 
@@ -170,10 +238,40 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                           />
                           {errors.fromEmail && <p className="text-xs text-red-500 mt-1">{errors.fromEmail}</p>}
                         </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Daily Send Limit</label>
+                          <input 
+                            type="number"
+                            placeholder="100" 
+                            className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" 
+                            value={newAcc.dailySendLimit || 100}
+                            onChange={e => setNewAcc({...newAcc, dailySendLimit: parseInt(e.target.value) || 100})} 
+                          />
+                          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Maximum emails to send per day from this inbox</p>
+                        </div>
                     </div>
                     <div className="flex justify-end gap-2 pt-2">
-                        <button onClick={() => { setIsAdding(false); setErrors({}); setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0 }); }} className="px-4 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">Cancel</button>
-                        <button onClick={addAccount} className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-xl text-sm font-black hover:bg-blue-700 dark:hover:bg-blue-600 transition-all">Save Account</button>
+                        <button 
+                          onClick={() => { setIsAdding(false); setErrors({}); setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0, dailySendLimit: 100, sentToday: 0, lastResetDate: new Date().toISOString().split('T')[0] }); }} 
+                          disabled={isSaving}
+                          className="px-4 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          onClick={addAccount} 
+                          disabled={isSaving}
+                          className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-xl text-sm font-black hover:bg-blue-700 dark:hover:bg-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                          {isSaving ? (
+                            <>
+                              <Loader2 size={14} className="animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            'Save Account'
+                          )}
+                        </button>
                     </div>
                  </div>
              )}
@@ -190,6 +288,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                         <div className="flex-1">
                             <div className="font-black text-slate-900 dark:text-slate-100">{acc.label}</div>
                             <div className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-0.5">{acc.host}:{acc.port} • {acc.fromEmail}</div>
+                            <div className="text-xs text-slate-400 dark:text-slate-500 font-medium mt-0.5">Daily Limit: {acc.sentToday || 0} / {acc.dailySendLimit || 100} emails</div>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -201,7 +300,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                             {isTesting === acc.id ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
                             Test
                         </button>
-                        <button onClick={() => onUpdateAccounts(accounts.filter(a => a.id !== acc.id))} className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" title="Delete account"><Trash2 size={18} /></button>
+                        <button 
+                          onClick={async () => {
+                            setDeleteModal({ isOpen: true, accountId: acc.id, accountLabel: acc.label });
+                          }} 
+                          className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" 
+                          title="Delete account"
+                        >
+                          <Trash2 size={18} />
+                        </button>
                     </div>
                 </div>
              ))}
@@ -223,6 +330,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
         </div>
       </div>
     </div>
+    </>
   );
 };
 

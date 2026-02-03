@@ -6,12 +6,34 @@ import { Search, Mail, MailOpen, RefreshCw, Trash2, Reply, Star, CheckCircle } f
 interface InboxProps {
   emails: EmailMessage[];
   onUpdateEmails: (emails: EmailMessage[]) => void;
+  userId?: string;
+  smtpAccounts?: Array<{ id: string; user: string; pass: string; host: string; port: number; fromEmail: string }>;
 }
 
-const Inbox: React.FC<InboxProps> = ({ emails, onUpdateEmails }) => {
+const Inbox: React.FC<InboxProps> = ({ emails, onUpdateEmails, userId, smtpAccounts = [] }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedEmail, setSelectedEmail] = useState<EmailMessage | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+  const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null);
+
+  // Check if backend is available on mount
+  React.useEffect(() => {
+    const checkBackend = async () => {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      try {
+        const response = await fetch(`${backendUrl}/health`, { 
+          method: 'GET',
+          signal: AbortSignal.timeout(3000) // 3 second timeout
+        });
+        setBackendAvailable(response.ok);
+      } catch (error) {
+        setBackendAvailable(false);
+      }
+    };
+    checkBackend();
+  }, []);
 
   const filtered = emails.filter(e => 
     e.from.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -19,11 +41,80 @@ const Inbox: React.FC<InboxProps> = ({ emails, onUpdateEmails }) => {
   );
 
   const refreshInbox = async () => {
+    if (!userId || smtpAccounts.length === 0) {
+      setSyncError('Please configure an SMTP account in Settings to sync emails');
+      setTimeout(() => setSyncError(null), 5000);
+      return;
+    }
+
     setIsRefreshing(true);
-    // Real IMAP/API sync simulation
-    await new Promise(r => setTimeout(r, 2000));
-    // In a practical app, you would fetch from your backend here.
-    setIsRefreshing(false);
+    setSyncError(null);
+    setSyncSuccess(null);
+
+    try {
+      // Use the first SMTP account for syncing (or you could let user choose)
+      const smtpAccount = smtpAccounts[0];
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      const response = await fetch(`${backendUrl}/sync-inbox`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          smtp: {
+            host: smtpAccount.host,
+            port: smtpAccount.port,
+            user: smtpAccount.user,
+            pass: smtpAccount.pass,
+            fromEmail: smtpAccount.fromEmail
+          },
+          userId,
+          supabaseUrl,
+          supabaseKey
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || result.error || 'Failed to sync inbox');
+      }
+
+      // Show success message
+      if (result.fetched > 0) {
+        setSyncSuccess(`Successfully synced ${result.fetched} new emails`);
+        
+        // Reload emails from database (handled by parent component)
+        // The parent will reload emails after onUpdateEmails is called
+        // For now, trigger a refresh by calling onUpdateEmails with current emails
+        // This signals the parent to reload from database
+        onUpdateEmails(emails); // This will trigger parent to reload from DB
+      } else {
+        setSyncSuccess('Inbox is up to date. No new emails found.');
+      }
+    } catch (error: any) {
+      console.error('[Inbox] Sync error:', error);
+      
+      // Provide more helpful error messages
+      let errorMessage = error.message || 'Failed to sync inbox';
+      
+      if (error.message?.includes('404') || error.message?.includes('Endpoint not found')) {
+        errorMessage = 'Backend server not running or endpoint not found. Please start the server: node server.js';
+      } else if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
+        errorMessage = 'Cannot connect to backend server. Make sure it\'s running on http://localhost:3001';
+      } else if (error.message?.includes('IMAP libraries not installed')) {
+        errorMessage = 'Please install required packages: npm install imap-simple mailparser';
+      }
+      
+      setSyncError(errorMessage);
+    } finally {
+      setIsRefreshing(false);
+      setTimeout(() => {
+        setSyncError(null);
+        setSyncSuccess(null);
+      }, 5000);
+    }
   };
 
   const markAsRead = (id: string) => {
@@ -42,14 +133,31 @@ const Inbox: React.FC<InboxProps> = ({ emails, onUpdateEmails }) => {
           <h1 className="text-3xl font-black text-slate-900 dark:text-slate-100 tracking-tight">Lead Interactions</h1>
           <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">Real-time prospect replies detected from your domains.</p>
         </div>
-        <button 
-          onClick={refreshInbox}
-          disabled={isRefreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm disabled:opacity-50"
-        >
-          <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-          {isRefreshing ? 'Syncing...' : 'Sync Inbox'}
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          {backendAvailable === false && (
+            <div className="text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-3 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
+              ⚠️ Backend server not running. Start with: <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">node server.js</code>
+            </div>
+          )}
+          {syncError && (
+            <div className="text-xs text-red-600 dark:text-red-400 font-medium bg-red-50 dark:bg-red-900/20 px-3 py-1 rounded-lg border border-red-200 dark:border-red-800">
+              {syncError}
+            </div>
+          )}
+          {syncSuccess && (
+            <div className="text-xs text-green-600 dark:text-green-400 font-medium bg-green-50 dark:bg-green-900/20 px-3 py-1 rounded-lg border border-green-200 dark:border-green-800">
+              {syncSuccess}
+            </div>
+          )}
+          <button 
+            onClick={refreshInbox}
+            disabled={isRefreshing || backendAvailable === false}
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-all shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+            {isRefreshing ? 'Syncing...' : 'Sync Inbox'}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl shadow-sm flex overflow-hidden">
