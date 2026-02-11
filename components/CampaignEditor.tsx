@@ -338,28 +338,25 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     console.log(`[Launch Sequence] ✓ Account limits check passed: ${availableAccounts.length} account(s) available`);
     
 
-    // Validate ALL steps have webhook URLs
-    for (let s = 0; s < localCampaign.steps.length; s++) {
-      const step = localCampaign.steps[s];
-      if (!step.webhookUrl || step.webhookUrl.trim() === '') {
-        return alert(`Please configure a webhook URL for ${s === 0 ? 'Initial Email' : `Follow-up ${s}`} (step ${s + 1})`);
-      }
-      try {
-        new URL(step.webhookUrl);
-      } catch (e) {
-        return alert(`Invalid webhook URL in step ${s + 1}. Use format: https://your-n8n.com/webhook/...`);
-      }
-
     // Validate webhook URL
     const firstStep = localCampaign.steps[0];
     if (!firstStep || !firstStep.webhookUrl || firstStep.webhookUrl.trim() === '') {
       console.warn('[Launch Sequence] Validation failed: No webhook URL configured');
       toast.warning('Please configure a webhook URL in the Sequence & Config tab');
       return;
-
     }
     console.log(`[Launch Sequence] ✓ Webhook URL check passed: ${firstStep.webhookUrl.substring(0, 50)}...`);
-    
+
+    // Validate webhook URL format
+    try {
+      new URL(firstStep.webhookUrl);
+    } catch (e) {
+      console.warn('[Launch Sequence] Validation failed: Invalid webhook URL format', e);
+      toast.error('Please enter a valid webhook URL (e.g., https://your-n8n.com/webhook/...)');
+      return;
+    }
+    console.log('[Launch Sequence] ✓ All validations passed, proceeding with launch...');
+
 
     // Ensure campaign is saved to database before execution (for proper UUIDs and foreign keys)
     let campaignToUse = localCampaign;
@@ -403,17 +400,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
         console.error('[Campaign Execution] Error ensuring campaign is saved:', saveError);
         // Continue anyway - execution logs might fail but campaign can still run
       }
-
-    // Validate webhook URL format
-    try {
-      new URL(firstStep.webhookUrl);
-    } catch (e) {
-      console.warn('[Launch Sequence] Validation failed: Invalid webhook URL format', e);
-      toast.error('Please enter a valid webhook URL (e.g., https://your-n8n.com/webhook/...)');
-      return;
-
     }
-    console.log('[Launch Sequence] ✓ All validations passed, proceeding with launch...');
     
     // Start execution IMMEDIATELY - don't wait for save
     // Save can happen in background, but execution should start right away
@@ -476,28 +463,6 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     const updatedLeads = [...campaignToUse.leads];
     const newLogs: ExecutionLog[] = [];
     let accountRotationIndex = 0; // Track rotation across leads
-
-
-    const getStepDelayMs = (s: SequenceStep) => {
-      const days = s.delayDays ?? 0, hours = s.delayHours ?? 0, min = s.delayMinutes ?? 0;
-      return (days * 24 * 60 * 60 + hours * 60 * 60 + min * 60) * 1000;
-    };
-    const MAX_WAIT_MS = 10 * 60 * 1000; // Cap at 10 min for browser (long delays need backend scheduler)
-
-    for (let stepIdx = 0; stepIdx < campaignToUse.steps.length; stepIdx++) {
-      const step = campaignToUse.steps[stepIdx];
-      
-      // Wait before this step (except initial)
-      if (stepIdx > 0) {
-        const delayMs = Math.min(getStepDelayMs(step), MAX_WAIT_MS);
-        if (delayMs > 0) {
-          setLogs(prev => [{ id: 'wait-' + stepIdx, campaignId: campaignToUse.id, leadId: '', stepId: step.id, timestamp: new Date().toISOString(), subject: `Waiting ${Math.round(delayMs / 1000)}s before follow-up ${stepIdx + 1}...`, body: '', status: 'SUCCESS' as const, type: 'WEBHOOK' as const }, ...prev]);
-          await wait(Math.round(delayMs / 1000));
-        }
-      }
-
-      for (let i = 0; i < updatedLeads.length; i++) {
-        const lead = updatedLeads[i];
 
     // Wrap execution in try-catch to handle any errors
     try {
