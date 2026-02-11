@@ -1,10 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Campaign, CampaignStatus, SequenceStep, SmtpAccount, ExecutionLog, Lead } from '../types';
-<<<<<<< HEAD
-import { logService, supabase, campaignService } from '../lib/supabase';
-import { ArrowLeft, Save, Plus, Trash2, Webhook, Zap, Loader2, CheckCircle2, AlertCircle, History, Play, Calendar, List, Settings as SettingsIcon, Code, Info, Terminal, Mail, Server, Clock, Pause, StopCircle } from 'lucide-react';
-=======
 import { logService, supabase, campaignService, analyticsService } from '../lib/supabase';
 import { useToastContext } from '../contexts/ToastContext';
 import Modal from './Modal';
@@ -12,7 +8,6 @@ import { Tooltip } from './Tooltip';
 import { LoadingOverlay } from './LoadingOverlay';
 import { EmailPreview } from './EmailPreview';
 import { ArrowLeft, Save, Plus, Trash2, Webhook, Zap, Loader2, CheckCircle2, AlertCircle, History, Play, Calendar, List, Settings as SettingsIcon, Code, Info, Terminal, Mail, Server, Clock, Pause, StopCircle, Eye } from 'lucide-react';
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
 
 interface CampaignEditorProps {
   campaign: Campaign;
@@ -22,23 +17,11 @@ interface CampaignEditorProps {
 }
 
 const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts, onSave, onBack }) => {
-<<<<<<< HEAD
-  const normalizedSteps = (campaign.steps || []).map(s => ({
-    ...s,
-    delayHours: s.delayHours ?? 0,
-    delayMinutes: s.delayMinutes ?? 0,
-  }));
-  const [localCampaign, setLocalCampaign] = useState<Campaign>({
-    ...campaign,
-    steps: normalizedSteps.length ? normalizedSteps : [{ id: 's' + Date.now(), order: 1, delayDays: 0, delayHours: 0, delayMinutes: 0, webhookUrl: '' }],
-    schedule: campaign.schedule || { days: [1,2,3,4,5], startTime: "09:00", endTime: "17:00", timezone: "UTC" }
-=======
   const toast = useToastContext();
   const [localCampaign, setLocalCampaign] = useState<Campaign>({
     ...campaign,
     schedule: campaign.schedule || { days: [1,2,3,4,5], startTime: "09:00", endTime: "17:00", timezone: "UTC", enabled: false, type: 'DAILY' },
     senderAccountIds: campaign.senderAccountIds || (campaign.senderAccountId ? [campaign.senderAccountId] : [])
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
   });
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
