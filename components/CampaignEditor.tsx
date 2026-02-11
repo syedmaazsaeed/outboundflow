@@ -337,7 +337,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     }
     console.log(`[Launch Sequence] ✓ Account limits check passed: ${availableAccounts.length} account(s) available`);
     
-<<<<<<< HEAD
+
     // Validate ALL steps have webhook URLs
     for (let s = 0; s < localCampaign.steps.length; s++) {
       const step = localCampaign.steps[s];
@@ -349,18 +349,18 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
       } catch (e) {
         return alert(`Invalid webhook URL in step ${s + 1}. Use format: https://your-n8n.com/webhook/...`);
       }
-=======
+
     // Validate webhook URL
     const firstStep = localCampaign.steps[0];
     if (!firstStep || !firstStep.webhookUrl || firstStep.webhookUrl.trim() === '') {
       console.warn('[Launch Sequence] Validation failed: No webhook URL configured');
       toast.warning('Please configure a webhook URL in the Sequence & Config tab');
       return;
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
+
     }
     console.log(`[Launch Sequence] ✓ Webhook URL check passed: ${firstStep.webhookUrl.substring(0, 50)}...`);
     
-<<<<<<< HEAD
+
     // Ensure campaign is saved to database before execution (for proper UUIDs and foreign keys)
     let campaignToUse = localCampaign;
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -403,7 +403,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
         console.error('[Campaign Execution] Error ensuring campaign is saved:', saveError);
         // Continue anyway - execution logs might fail but campaign can still run
       }
-=======
+
     // Validate webhook URL format
     try {
       new URL(firstStep.webhookUrl);
@@ -411,7 +411,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
       console.warn('[Launch Sequence] Validation failed: Invalid webhook URL format', e);
       toast.error('Please enter a valid webhook URL (e.g., https://your-n8n.com/webhook/...)');
       return;
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
+
     }
     console.log('[Launch Sequence] ✓ All validations passed, proceeding with launch...');
     
@@ -429,13 +429,13 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     // Set execution state IMMEDIATELY - don't wait for anything
     setIsExecuting(true);
     setActiveTab('logs');
-<<<<<<< HEAD
+
     
     const totalEmails = campaignToUse.steps.length * campaignToUse.leads.length;
     setProgress({ current: 0, total: totalEmails });
     setLogs([]); // Clear previous logs
     
-=======
+
     setProgress({ current: 0, total: campaignToUse.leads.length });
     setLogs([]); // Clear previous logs
     
@@ -472,12 +472,12 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     
     console.log('[Launch Sequence] Execution state set, starting lead processing NOW...');
     
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
+
     const updatedLeads = [...campaignToUse.leads];
     const newLogs: ExecutionLog[] = [];
     let accountRotationIndex = 0; // Track rotation across leads
 
-<<<<<<< HEAD
+
     const getStepDelayMs = (s: SequenceStep) => {
       const days = s.delayDays ?? 0, hours = s.delayHours ?? 0, min = s.delayMinutes ?? 0;
       return (days * 24 * 60 * 60 + hours * 60 * 60 + min * 60) * 1000;
@@ -498,12 +498,12 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
 
       for (let i = 0; i < updatedLeads.length; i++) {
         const lead = updatedLeads[i];
-=======
+
     // Wrap execution in try-catch to handle any errors
     try {
       console.log(`[Launch Sequence] ===== ENTERING EXECUTION LOOP =====`);
       console.log(`[Launch Sequence] Processing ${updatedLeads.length} leads...`);
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
+
       
       if (!campaignToUse.steps || campaignToUse.steps.length === 0) {
         throw new Error('No sequence steps configured. Please add at least one step in Sequence & Config tab.');
@@ -622,11 +622,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
         };
 
         // Debug logging
-<<<<<<< HEAD
-        console.log(`[Webhook Request] Step ${stepIdx + 1}/${campaignToUse.steps.length} Lead ${i + 1}/${updatedLeads.length}`, {
-=======
         console.log(`[Webhook Request] Lead ${i + 1}/${updatedLeads.length}`, {
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
           url: step.webhookUrl,
           leadEmail: lead.email,
           payloadSize: JSON.stringify(requestPayload).length,
@@ -907,7 +903,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
           type: 'SEND'
         };
         
-<<<<<<< HEAD
+
         // Save log to database
         try {
           const { id, ...logWithoutId } = logEntry;
@@ -942,7 +938,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
         newLogs.unshift(logEntry); // Add to top of log list
         setLogs([...newLogs]);
         setProgress(prev => ({ ...prev, current: stepIdx * updatedLeads.length + i + 1 }));
-=======
+
         // Update UI immediately - don't wait for log save
         newLogs.unshift(logEntry); // Add to top of log list
         setLogs([...newLogs]);
@@ -968,7 +964,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
             // Continue - log is already in UI
           }
         })(); // Fire and forget - don't await
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
+
 
         // 3. WAIT BEFORE NEXT LEAD (MANDATORY SEQUENTIAL DELAY)
         if (i < updatedLeads.length - 1) {
@@ -1051,26 +1047,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
         await wait(sendDelay);
       }
     }
-    }
 
-<<<<<<< HEAD
-    setCurrentProcessingLeadId(null);
-    setIsExecuting(false);
-    
-    // Update local campaign with updated leads and save
-    const finalCampaign = { ...campaignToUse, leads: updatedLeads, status: CampaignStatus.ACTIVE };
-    setLocalCampaign(finalCampaign);
-    
-    // Save campaign with updated lead statuses to database
-    // This ensures dashboard shows correct "Sent / Contacted" count
-    console.log('[Campaign Execution] Saving campaign with updated lead statuses...', {
-      totalLeads: updatedLeads.length,
-      contactedLeads: updatedLeads.filter(l => l.status === 'CONTACTED').length,
-      campaignId: finalCampaign.id
-    });
-    
-    onSave(finalCampaign);
-=======
       // Execution completed successfully
       setCurrentProcessingLeadId(null);
       setIsExecuting(false);
@@ -1121,7 +1098,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
       setCurrentProcessingLeadId(null);
       setIsExecuting(false);
     }
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
+
   };
 
   return (
@@ -1368,7 +1345,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                                     </div>
                                 </div>
                             )}
-<<<<<<< HEAD
+
                         </div>
                         <div>
                             <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block">
@@ -1412,7 +1389,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
                               {idx === 0 ? 'Initial email sends immediately (0 delay).' : `Follow-up sends ${((step.delayDays ?? 0) * 24 * 60) + ((step.delayHours ?? 0) * 60) + (step.delayMinutes ?? 0)} minutes after previous step.`}
                             </p>
-=======
+
                             {testResults[step.id]?.success && (
                                 <button
                                     onClick={async () => {
@@ -1459,7 +1436,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                                     Preview Email
                                 </button>
                             )}
->>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
+
                         </div>
                         <div>
                             <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block">Persona / Prompt Hint</label>
