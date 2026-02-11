@@ -518,6 +518,8 @@ export const campaignService = {
         campaign_id: campaignData.id,
         order_number: step.order,
         delay_days: step.delayDays,
+        delay_hours: step.delayHours ?? 0,
+        delay_minutes: step.delayMinutes ?? 0,
         webhook_url: step.webhookUrl,
         prompt_hint: step.promptHint || null,
       }));
@@ -732,6 +734,8 @@ export const campaignService = {
         campaign_id: campaign.id,
         order_number: step.order,
         delay_days: step.delayDays,
+        delay_hours: step.delayHours ?? 0,
+        delay_minutes: step.delayMinutes ?? 0,
         webhook_url: step.webhookUrl,
         prompt_hint: step.promptHint || null,
       }));
@@ -1427,7 +1431,9 @@ function transformSequenceStep(data: any): SequenceStep {
   return {
     id: data.id,
     order: data.order_number,
-    delayDays: data.delay_days,
+    delayDays: data.delay_days ?? 0,
+    delayHours: data.delay_hours ?? 0,
+    delayMinutes: data.delay_minutes ?? 0,
     webhookUrl: data.webhook_url,
     promptHint: data.prompt_hint || undefined,
   };

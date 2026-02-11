@@ -402,8 +402,13 @@ const AppContent: React.FC = () => {
           name: 'New Campaign',
           status: CampaignStatus.DRAFT,
           leads: [],
+<<<<<<< HEAD
+          steps: [{ id: 's' + Date.now(), order: 1, delayDays: 0, delayHours: 0, delayMinutes: 0, webhookUrl: '' }],
+          schedule: { days: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "17:00", timezone: "UTC" },
+=======
           steps: [{ id: 's' + Date.now(), order: 1, delayDays: 0, webhookUrl: '' }],
           schedule: { days: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "17:00", timezone: "UTC", enabled: false, type: 'DAILY' },
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
           createdAt: new Date().toISOString()
         };
         
@@ -552,6 +557,26 @@ const AppContent: React.FC = () => {
         <CampaignList 
           campaigns={campaigns} 
           onSelect={setSelectedCampaignId}
+<<<<<<< HEAD
+          onAdd={async () => {
+            const newCampaign: Campaign = {
+              id: Math.random().toString(36).substr(2, 9),
+              name: 'New Campaign',
+              status: CampaignStatus.DRAFT,
+              leads: [],
+              steps: [{ id: 's' + Date.now(), order: 1, delayDays: 0, delayHours: 0, delayMinutes: 0, webhookUrl: '' }],
+              schedule: { days: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "17:00", timezone: "UTC" },
+              createdAt: new Date().toISOString()
+            };
+            
+            if (user) {
+              const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+              if (supabaseUrl) {
+                const created = await campaignService.create(user.id, newCampaign);
+                if (created) {
+                  setCampaigns([...campaigns, created]);
+                  setSelectedCampaignId(created.id);
+=======
           onClone={async (clonedCampaign) => {
             try {
               if (user) {
@@ -567,6 +592,7 @@ const AppContent: React.FC = () => {
                   await saveCampaigns([...campaigns, clonedCampaign]);
                   setSelectedCampaignId(clonedCampaign.id);
                   toast.success('Campaign cloned successfully');
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
                 }
               } else {
                 setCampaigns([...campaigns, clonedCampaign]);

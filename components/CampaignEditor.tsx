@@ -1,6 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Campaign, CampaignStatus, SequenceStep, SmtpAccount, ExecutionLog, Lead } from '../types';
+<<<<<<< HEAD
+import { logService, supabase, campaignService } from '../lib/supabase';
+import { ArrowLeft, Save, Plus, Trash2, Webhook, Zap, Loader2, CheckCircle2, AlertCircle, History, Play, Calendar, List, Settings as SettingsIcon, Code, Info, Terminal, Mail, Server, Clock, Pause, StopCircle } from 'lucide-react';
+=======
 import { logService, supabase, campaignService, analyticsService } from '../lib/supabase';
 import { useToastContext } from '../contexts/ToastContext';
 import Modal from './Modal';
@@ -8,6 +12,7 @@ import { Tooltip } from './Tooltip';
 import { LoadingOverlay } from './LoadingOverlay';
 import { EmailPreview } from './EmailPreview';
 import { ArrowLeft, Save, Plus, Trash2, Webhook, Zap, Loader2, CheckCircle2, AlertCircle, History, Play, Calendar, List, Settings as SettingsIcon, Code, Info, Terminal, Mail, Server, Clock, Pause, StopCircle, Eye } from 'lucide-react';
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
 
 interface CampaignEditorProps {
   campaign: Campaign;
@@ -17,11 +22,23 @@ interface CampaignEditorProps {
 }
 
 const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts, onSave, onBack }) => {
+<<<<<<< HEAD
+  const normalizedSteps = (campaign.steps || []).map(s => ({
+    ...s,
+    delayHours: s.delayHours ?? 0,
+    delayMinutes: s.delayMinutes ?? 0,
+  }));
+  const [localCampaign, setLocalCampaign] = useState<Campaign>({
+    ...campaign,
+    steps: normalizedSteps.length ? normalizedSteps : [{ id: 's' + Date.now(), order: 1, delayDays: 0, delayHours: 0, delayMinutes: 0, webhookUrl: '' }],
+    schedule: campaign.schedule || { days: [1,2,3,4,5], startTime: "09:00", endTime: "17:00", timezone: "UTC" }
+=======
   const toast = useToastContext();
   const [localCampaign, setLocalCampaign] = useState<Campaign>({
     ...campaign,
     schedule: campaign.schedule || { days: [1,2,3,4,5], startTime: "09:00", endTime: "17:00", timezone: "UTC", enabled: false, type: 'DAILY' },
     senderAccountIds: campaign.senderAccountIds || (campaign.senderAccountId ? [campaign.senderAccountId] : [])
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
   });
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -36,6 +53,22 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
   const [previewStep, setPreviewStep] = useState<{isOpen: boolean; step: SequenceStep | null}>({isOpen: false, step: null});
   const [previewData, setPreviewData] = useState<{subject: string; body: string; html?: string}>({subject: '', body: ''});
   const [isSaving, setIsSaving] = useState(false);
+
+  // Load execution logs from database on mount
+  useEffect(() => {
+    const loadLogs = async () => {
+      try {
+        const logs = await logService.getByCampaign(localCampaign.id);
+        setLogs(logs);
+      } catch (error) {
+        console.error('Error loading execution logs:', error);
+      }
+    };
+    
+    if (localCampaign.id) {
+      loadLogs();
+    }
+  }, [localCampaign.id]);
 
   // Load execution logs from database on mount
   useEffect(() => {
@@ -249,6 +282,30 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     });
   };
 
+  const addStep = () => {
+    const newOrder = localCampaign.steps.length + 1;
+    const newStep: SequenceStep = {
+      id: 's' + Date.now(),
+      order: newOrder,
+      delayDays: 2,
+      delayHours: 0,
+      delayMinutes: 0,
+      webhookUrl: '',
+    };
+    setLocalCampaign({
+      ...localCampaign,
+      steps: [...localCampaign.steps, newStep]
+    });
+  };
+
+  const removeStep = (id: string) => {
+    if (localCampaign.steps.length <= 1) return;
+    const filtered = localCampaign.steps.filter(s => s.id !== id);
+    // Re-order
+    const reordered = filtered.map((s, i) => ({ ...s, order: i + 1 }));
+    setLocalCampaign({ ...localCampaign, steps: reordered });
+  };
+
   const runCampaignExecution = async () => {
     console.log('[Launch Sequence] Button clicked, starting validation...');
     
@@ -297,15 +354,73 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     }
     console.log(`[Launch Sequence] ✓ Account limits check passed: ${availableAccounts.length} account(s) available`);
     
+<<<<<<< HEAD
+    // Validate ALL steps have webhook URLs
+    for (let s = 0; s < localCampaign.steps.length; s++) {
+      const step = localCampaign.steps[s];
+      if (!step.webhookUrl || step.webhookUrl.trim() === '') {
+        return alert(`Please configure a webhook URL for ${s === 0 ? 'Initial Email' : `Follow-up ${s}`} (step ${s + 1})`);
+      }
+      try {
+        new URL(step.webhookUrl);
+      } catch (e) {
+        return alert(`Invalid webhook URL in step ${s + 1}. Use format: https://your-n8n.com/webhook/...`);
+      }
+=======
     // Validate webhook URL
     const firstStep = localCampaign.steps[0];
     if (!firstStep || !firstStep.webhookUrl || firstStep.webhookUrl.trim() === '') {
       console.warn('[Launch Sequence] Validation failed: No webhook URL configured');
       toast.warning('Please configure a webhook URL in the Sequence & Config tab');
       return;
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
     }
     console.log(`[Launch Sequence] ✓ Webhook URL check passed: ${firstStep.webhookUrl.substring(0, 50)}...`);
     
+<<<<<<< HEAD
+    // Ensure campaign is saved to database before execution (for proper UUIDs and foreign keys)
+    let campaignToUse = localCampaign;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (supabaseUrl && supabase) {
+      try {
+        // Get current user
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          // Check if campaign exists in database by trying to fetch it
+          const existingCampaign = await campaignService.getById(localCampaign.id);
+          
+          // If campaign doesn't exist or has different structure, save it first
+          if (!existingCampaign || existingCampaign.leads.length !== localCampaign.leads.length) {
+            console.log('[Campaign Execution] Saving campaign to database before execution...');
+            const savedCampaign = await campaignService.update(localCampaign);
+            if (savedCampaign) {
+              // Use saved campaign with database IDs
+              campaignToUse = savedCampaign;
+              setLocalCampaign(savedCampaign);
+              console.log('[Campaign Execution] Campaign saved, using database IDs:', {
+                campaignId: savedCampaign.id,
+                leadIds: savedCampaign.leads.map(l => l.id).slice(0, 3),
+                stepIds: savedCampaign.steps.map(s => s.id)
+              });
+            } else {
+              console.warn('[Campaign Execution] Failed to save campaign to database, execution may fail for logs');
+            }
+          } else {
+            // Campaign exists, use database version with proper UUIDs
+            campaignToUse = existingCampaign;
+            setLocalCampaign(existingCampaign);
+            console.log('[Campaign Execution] Using existing campaign from database:', {
+              campaignId: existingCampaign.id,
+              leadIds: existingCampaign.leads.map(l => l.id).slice(0, 3),
+              stepIds: existingCampaign.steps.map(s => s.id)
+            });
+          }
+        }
+      } catch (saveError: any) {
+        console.error('[Campaign Execution] Error ensuring campaign is saved:', saveError);
+        // Continue anyway - execution logs might fail but campaign can still run
+      }
+=======
     // Validate webhook URL format
     try {
       new URL(firstStep.webhookUrl);
@@ -313,6 +428,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
       console.warn('[Launch Sequence] Validation failed: Invalid webhook URL format', e);
       toast.error('Please enter a valid webhook URL (e.g., https://your-n8n.com/webhook/...)');
       return;
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
     }
     console.log('[Launch Sequence] ✓ All validations passed, proceeding with launch...');
     
@@ -330,6 +446,13 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     // Set execution state IMMEDIATELY - don't wait for anything
     setIsExecuting(true);
     setActiveTab('logs');
+<<<<<<< HEAD
+    
+    const totalEmails = campaignToUse.steps.length * campaignToUse.leads.length;
+    setProgress({ current: 0, total: totalEmails });
+    setLogs([]); // Clear previous logs
+    
+=======
     setProgress({ current: 0, total: campaignToUse.leads.length });
     setLogs([]); // Clear previous logs
     
@@ -366,14 +489,38 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
     
     console.log('[Launch Sequence] Execution state set, starting lead processing NOW...');
     
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
     const updatedLeads = [...campaignToUse.leads];
     const newLogs: ExecutionLog[] = [];
     let accountRotationIndex = 0; // Track rotation across leads
 
+<<<<<<< HEAD
+    const getStepDelayMs = (s: SequenceStep) => {
+      const days = s.delayDays ?? 0, hours = s.delayHours ?? 0, min = s.delayMinutes ?? 0;
+      return (days * 24 * 60 * 60 + hours * 60 * 60 + min * 60) * 1000;
+    };
+    const MAX_WAIT_MS = 10 * 60 * 1000; // Cap at 10 min for browser (long delays need backend scheduler)
+
+    for (let stepIdx = 0; stepIdx < campaignToUse.steps.length; stepIdx++) {
+      const step = campaignToUse.steps[stepIdx];
+      
+      // Wait before this step (except initial)
+      if (stepIdx > 0) {
+        const delayMs = Math.min(getStepDelayMs(step), MAX_WAIT_MS);
+        if (delayMs > 0) {
+          setLogs(prev => [{ id: 'wait-' + stepIdx, campaignId: campaignToUse.id, leadId: '', stepId: step.id, timestamp: new Date().toISOString(), subject: `Waiting ${Math.round(delayMs / 1000)}s before follow-up ${stepIdx + 1}...`, body: '', status: 'SUCCESS' as const, type: 'WEBHOOK' as const }, ...prev]);
+          await wait(Math.round(delayMs / 1000));
+        }
+      }
+
+      for (let i = 0; i < updatedLeads.length; i++) {
+        const lead = updatedLeads[i];
+=======
     // Wrap execution in try-catch to handle any errors
     try {
       console.log(`[Launch Sequence] ===== ENTERING EXECUTION LOOP =====`);
       console.log(`[Launch Sequence] Processing ${updatedLeads.length} leads...`);
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
       
       if (!campaignToUse.steps || campaignToUse.steps.length === 0) {
         throw new Error('No sequence steps configured. Please add at least one step in Sequence & Config tab.');
@@ -492,7 +639,11 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
         };
 
         // Debug logging
+<<<<<<< HEAD
+        console.log(`[Webhook Request] Step ${stepIdx + 1}/${campaignToUse.steps.length} Lead ${i + 1}/${updatedLeads.length}`, {
+=======
         console.log(`[Webhook Request] Lead ${i + 1}/${updatedLeads.length}`, {
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
           url: step.webhookUrl,
           leadEmail: lead.email,
           payloadSize: JSON.stringify(requestPayload).length,
@@ -773,6 +924,42 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
           type: 'SEND'
         };
         
+<<<<<<< HEAD
+        // Save log to database
+        try {
+          const { id, ...logWithoutId } = logEntry;
+          const savedLog = await logService.create(logWithoutId);
+          if (savedLog) {
+            logEntry.id = savedLog.id; // Update with database ID
+            console.log(`[Execution Log] Saved to database: ${savedLog.id}`, {
+              campaignId: logEntry.campaignId,
+              leadId: logEntry.leadId,
+              stepId: logEntry.stepId
+            });
+          } else {
+            console.warn('[Execution Log] Failed to save to database, keeping in memory only', {
+              campaignId: logEntry.campaignId,
+              leadId: logEntry.leadId,
+              stepId: logEntry.stepId,
+              reason: 'logService.create returned null - check foreign key constraints and database connection'
+            });
+          }
+        } catch (logError: any) {
+          console.error('[Execution Log] Error saving to database:', {
+            error: logError,
+            message: logError?.message,
+            campaignId: logEntry.campaignId,
+            leadId: logEntry.leadId,
+            stepId: logEntry.stepId,
+            hint: 'Check if campaign/lead/step IDs exist in database (must be UUIDs, not random strings)'
+          });
+          // Continue even if log save fails
+        }
+        
+        newLogs.unshift(logEntry); // Add to top of log list
+        setLogs([...newLogs]);
+        setProgress(prev => ({ ...prev, current: stepIdx * updatedLeads.length + i + 1 }));
+=======
         // Update UI immediately - don't wait for log save
         newLogs.unshift(logEntry); // Add to top of log list
         setLogs([...newLogs]);
@@ -798,6 +985,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
             // Continue - log is already in UI
           }
         })(); // Fire and forget - don't await
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
 
         // 3. WAIT BEFORE NEXT LEAD (MANDATORY SEQUENTIAL DELAY)
         if (i < updatedLeads.length - 1) {
@@ -874,13 +1062,32 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
         
         newLogs.unshift(errorLog);
         setLogs([...newLogs]);
-        setProgress(prev => ({ ...prev, current: i + 1 }));
+        setProgress(prev => ({ ...prev, current: stepIdx * updatedLeads.length + i + 1 }));
         
         // Even on error, we wait before trying the next lead to avoid spamming
         await wait(sendDelay);
       }
     }
+    }
 
+<<<<<<< HEAD
+    setCurrentProcessingLeadId(null);
+    setIsExecuting(false);
+    
+    // Update local campaign with updated leads and save
+    const finalCampaign = { ...campaignToUse, leads: updatedLeads, status: CampaignStatus.ACTIVE };
+    setLocalCampaign(finalCampaign);
+    
+    // Save campaign with updated lead statuses to database
+    // This ensures dashboard shows correct "Sent / Contacted" count
+    console.log('[Campaign Execution] Saving campaign with updated lead statuses...', {
+      totalLeads: updatedLeads.length,
+      contactedLeads: updatedLeads.filter(l => l.status === 'CONTACTED').length,
+      campaignId: finalCampaign.id
+    });
+    
+    onSave(finalCampaign);
+=======
       // Execution completed successfully
       setCurrentProcessingLeadId(null);
       setIsExecuting(false);
@@ -931,6 +1138,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
       setCurrentProcessingLeadId(null);
       setIsExecuting(false);
     }
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
   };
 
   return (
@@ -1080,11 +1288,36 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                 </div>
             </div>
 
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <List size={18} className="text-blue-600 dark:text-blue-400" />
+                Email Sequence & Follow-ups
+              </h3>
+              <button
+                onClick={addStep}
+                className="px-4 py-2 text-sm font-bold bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl flex items-center gap-2 transition-all border border-blue-200 dark:border-blue-800"
+              >
+                <Plus size={18} />
+                Add Follow-up
+              </button>
+            </div>
+
             {localCampaign.steps.map((step, idx) => (
                 <div key={step.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl overflow-hidden shadow-sm">
-                    <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs">{idx + 1}</div>
-                        AI Generation via n8n
+                    <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center text-xs">{idx + 1}</div>
+                          {idx === 0 ? 'Initial Email' : `Follow-up ${idx}`}
+                        </div>
+                        {localCampaign.steps.length > 1 && (
+                          <button
+                            onClick={() => removeStep(step.id)}
+                            className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-all"
+                            title="Remove step"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                     </div>
                     <div className="p-6 space-y-4">
                         <div>
@@ -1152,6 +1385,51 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                                     </div>
                                 </div>
                             )}
+<<<<<<< HEAD
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2 block">
+                              <Clock size={12} className="inline mr-1" />
+                              Send After (wait before this step)
+                            </label>
+                            <div className="flex gap-3 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  className="w-16 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 text-sm font-mono"
+                                  value={step.delayDays ?? 0}
+                                  onChange={e => updateStep(step.id, { delayDays: Math.max(0, parseInt(e.target.value) || 0) })}
+                                />
+                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">days</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={23}
+                                  className="w-16 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 text-sm font-mono"
+                                  value={step.delayHours ?? 0}
+                                  onChange={e => updateStep(step.id, { delayHours: Math.min(23, Math.max(0, parseInt(e.target.value) || 0)) })}
+                                />
+                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">hours</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={59}
+                                  className="w-16 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100 text-sm font-mono"
+                                  value={step.delayMinutes ?? 0}
+                                  onChange={e => updateStep(step.id, { delayMinutes: Math.min(59, Math.max(0, parseInt(e.target.value) || 0)) })}
+                                />
+                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">min</span>
+                              </div>
+                            </div>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
+                              {idx === 0 ? 'Initial email sends immediately (0 delay).' : `Follow-up sends ${((step.delayDays ?? 0) * 24 * 60) + ((step.delayHours ?? 0) * 60) + (step.delayMinutes ?? 0)} minutes after previous step.`}
+                            </p>
+=======
                             {testResults[step.id]?.success && (
                                 <button
                                     onClick={async () => {
@@ -1198,6 +1476,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                                     Preview Email
                                 </button>
                             )}
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
                         </div>
                         <div>
                             <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1 block">Persona / Prompt Hint</label>
@@ -1425,7 +1704,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                           Progress: {progress.current} / {progress.total}
                       </div>
                       <div className="h-4 w-[100px] bg-slate-800 dark:bg-slate-700 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-500 dark:bg-blue-400 transition-all duration-500" style={{ width: `${(progress.current / progress.total) * 100}%` }}></div>
+                          <div className="h-full bg-blue-500 dark:bg-blue-400 transition-all duration-500" style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}></div>
                       </div>
                   </div>
               </div>
@@ -1441,7 +1720,7 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                               Target: {localCampaign.leads.find(l => l.id === currentProcessingLeadId)?.email}
                           </div>
                           <div className="text-slate-500 dark:text-slate-500 italic text-[10px] mt-1">
-                              Step 1/2: Triggering Webhook at {localCampaign.steps[0].webhookUrl.substring(0, 40)}...
+                              Triggering Webhook at {localCampaign.steps[0]?.webhookUrl?.substring(0, 40) || '...'}...
                           </div>
                       </div>
                   )}
@@ -1457,21 +1736,29 @@ const CampaignEditor: React.FC<CampaignEditorProps> = ({ campaign, smtpAccounts,
                             <div className="flex items-center gap-2">
                                 <span className="text-slate-600 dark:text-slate-400">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
                                 <span className={log.status === 'SUCCESS' ? 'text-emerald-500 dark:text-emerald-400 font-bold' : 'text-red-500 dark:text-red-400 font-bold'}>
-                                    {log.status === 'SUCCESS' ? 'REAL_SEND_SUCCESS' : 'SEQUENCE_FAILED'}
+                                    {!log.leadId ? 'WAITING' : log.status === 'SUCCESS' ? 'REAL_SEND_SUCCESS' : 'SEQUENCE_FAILED'}
                                 </span>
                                 <span className="text-slate-500 dark:text-slate-500">→</span>
-                                <span className="text-blue-400 dark:text-blue-300 font-bold">{localCampaign.leads.find(l => l.id === log.leadId)?.email}</span>
+                                <span className="text-blue-400 dark:text-blue-300 font-bold">{log.leadId ? localCampaign.leads.find(l => l.id === log.leadId)?.email : log.subject}</span>
                             </div>
                             <span className="text-[9px] text-slate-700 dark:text-slate-500 font-bold uppercase tracking-tighter">ID: {log.id.substring(0, 6)}</span>
                         </div>
                         {log.status === 'SUCCESS' ? (
                             <div className="space-y-1 mt-2 pl-2 border-l border-slate-800 dark:border-slate-700">
-                                <div className="text-purple-400/80 dark:text-purple-300/80 flex items-center gap-2">
-                                    <CheckCircle2 size={10} /> Webhook: AI Content Received (Subject: {log.subject})
-                                </div>
-                                <div className="text-blue-400/80 dark:text-blue-300/80 flex items-center gap-2">
-                                    <Mail size={10} /> SMTP Dispatch: Accepted by Local Relay
-                                </div>
+                                {log.leadId ? (
+                                  <>
+                                    <div className="text-purple-400/80 dark:text-purple-300/80 flex items-center gap-2">
+                                        <CheckCircle2 size={10} /> Webhook: AI Content Received (Subject: {log.subject})
+                                    </div>
+                                    <div className="text-blue-400/80 dark:text-blue-300/80 flex items-center gap-2">
+                                        <Mail size={10} /> SMTP Dispatch: Accepted by Local Relay
+                                    </div>
+                                  </>
+                                ) : (
+                                    <div className="text-amber-400/80 dark:text-amber-300/80 flex items-center gap-2">
+                                        <Clock size={10} /> {log.subject}
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="text-red-400/80 dark:text-red-300/80 bg-red-950/20 dark:bg-red-900/30 p-2 rounded border border-red-900/30 dark:border-red-800/50 mt-2 text-[10px]">

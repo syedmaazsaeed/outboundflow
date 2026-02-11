@@ -104,7 +104,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
     } catch (error: any) {
       console.error('[addAccount] Error adding account:', error);
       const errorMessage = error.message || 'Unknown error occurred';
+<<<<<<< HEAD
+      alert(`Failed to save SMTP account: ${errorMessage}\n\nPossible causes:\n1. Supabase not configured (check .env.local)\n2. Database table doesn't exist\n3. Network error\n4. Operation timed out\n\nCheck browser console (F12) for details.`);
+=======
       toast.error(`Failed to save SMTP account: ${errorMessage}. Check browser console (F12) for details.`, 8000);
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
       // Keep form open if save failed
     } finally {
       setIsSaving(false);
@@ -124,6 +128,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
     setErrors({});
     try {
       await onUpdateAccounts(accounts.map(a => a.id === id ? updated : a));
+<<<<<<< HEAD
+      setEditingId(null);
+    } catch (error) {
+      console.error('Error updating account:', error);
+=======
       toast.success(`SMTP account "${updated.label}" updated successfully`);
       setEditingId(null);
     } catch (error) {
@@ -141,6 +150,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
     } catch (error) {
       console.error('Error deleting account:', error);
       toast.error('Failed to delete account. Please try again.');
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
     }
   };
 
@@ -252,7 +262,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                     </div>
                     <div className="flex justify-end gap-2 pt-2">
                         <button 
+<<<<<<< HEAD
+                          onClick={() => { setIsAdding(false); setErrors({}); setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0 }); }} 
+=======
                           onClick={() => { setIsAdding(false); setErrors({}); setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0, dailySendLimit: 100, sentToday: 0, lastResetDate: new Date().toISOString().split('T')[0] }); }} 
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
                           disabled={isSaving}
                           className="px-4 py-2 text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
@@ -302,7 +316,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                         </button>
                         <button 
                           onClick={async () => {
+<<<<<<< HEAD
+                            if (confirm(`Are you sure you want to delete "${acc.label}"?`)) {
+                              try {
+                                await onUpdateAccounts(accounts.filter(a => a.id !== acc.id));
+                              } catch (error) {
+                                console.error('Error deleting account:', error);
+                                alert('Failed to delete account. Please try again.');
+                              }
+                            }
+=======
                             setDeleteModal({ isOpen: true, accountId: acc.id, accountLabel: acc.label });
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
                           }} 
                           className="p-2 text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all" 
                           title="Delete account"

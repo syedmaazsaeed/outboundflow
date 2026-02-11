@@ -52,6 +52,11 @@ CREATE TABLE IF NOT EXISTS public.sequence_steps (
     campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
     order_number INTEGER NOT NULL,
     delay_days INTEGER NOT NULL DEFAULT 0,
+<<<<<<< HEAD
+    delay_hours INTEGER NOT NULL DEFAULT 0,
+    delay_minutes INTEGER NOT NULL DEFAULT 0,
+=======
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
     webhook_url TEXT NOT NULL DEFAULT '',
     prompt_hint TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

@@ -49,6 +49,8 @@ export interface SequenceStep {
   id: string;
   order: number;
   delayDays: number;
+  delayHours: number;
+  delayMinutes: number;
   webhookUrl: string; 
   promptHint?: string; 
 }

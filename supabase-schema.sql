@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS public.sequence_steps (
     campaign_id UUID NOT NULL REFERENCES public.campaigns(id) ON DELETE CASCADE,
     order_number INTEGER NOT NULL,
     delay_days INTEGER NOT NULL DEFAULT 0,
+    delay_hours INTEGER NOT NULL DEFAULT 0,
+    delay_minutes INTEGER NOT NULL DEFAULT 0,
     webhook_url TEXT NOT NULL DEFAULT '',
     prompt_hint TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -227,6 +229,39 @@ DROP POLICY IF EXISTS "Users can delete campaign accounts from own campaigns" ON
 DROP POLICY IF EXISTS "Users can view analytics of own campaigns" ON public.campaign_analytics;
 DROP POLICY IF EXISTS "Users can insert analytics for own campaigns" ON public.campaign_analytics;
 DROP POLICY IF EXISTS "Users can update analytics of own campaigns" ON public.campaign_analytics;
+
+-- Drop existing policies if they exist (to allow re-running this script)
+DROP POLICY IF EXISTS "Users can view own profile" ON public.users;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.users;
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.users;
+
+DROP POLICY IF EXISTS "Users can view own smtp accounts" ON public.smtp_accounts;
+DROP POLICY IF EXISTS "Users can insert own smtp accounts" ON public.smtp_accounts;
+DROP POLICY IF EXISTS "Users can update own smtp accounts" ON public.smtp_accounts;
+DROP POLICY IF EXISTS "Users can delete own smtp accounts" ON public.smtp_accounts;
+
+DROP POLICY IF EXISTS "Users can view own campaigns" ON public.campaigns;
+DROP POLICY IF EXISTS "Users can insert own campaigns" ON public.campaigns;
+DROP POLICY IF EXISTS "Users can update own campaigns" ON public.campaigns;
+DROP POLICY IF EXISTS "Users can delete own campaigns" ON public.campaigns;
+
+DROP POLICY IF EXISTS "Users can view steps of own campaigns" ON public.sequence_steps;
+DROP POLICY IF EXISTS "Users can insert steps to own campaigns" ON public.sequence_steps;
+DROP POLICY IF EXISTS "Users can update steps of own campaigns" ON public.sequence_steps;
+DROP POLICY IF EXISTS "Users can delete steps of own campaigns" ON public.sequence_steps;
+
+DROP POLICY IF EXISTS "Users can view leads of own campaigns" ON public.leads;
+DROP POLICY IF EXISTS "Users can insert leads to own campaigns" ON public.leads;
+DROP POLICY IF EXISTS "Users can update leads of own campaigns" ON public.leads;
+DROP POLICY IF EXISTS "Users can delete leads of own campaigns" ON public.leads;
+
+DROP POLICY IF EXISTS "Users can view own email messages" ON public.email_messages;
+DROP POLICY IF EXISTS "Users can insert own email messages" ON public.email_messages;
+DROP POLICY IF EXISTS "Users can update own email messages" ON public.email_messages;
+DROP POLICY IF EXISTS "Users can delete own email messages" ON public.email_messages;
+
+DROP POLICY IF EXISTS "Users can view logs of own campaigns" ON public.execution_logs;
+DROP POLICY IF EXISTS "Users can insert logs for own campaigns" ON public.execution_logs;
 
 -- RLS Policies: Users can only access their own data
 CREATE POLICY "Users can view own profile" ON public.users
@@ -450,13 +485,19 @@ $$ language 'plpgsql';
 
 -- Drop existing triggers if they exist (to allow re-running this script)
 DROP TRIGGER IF EXISTS update_users_updated_at ON public.users;
+<<<<<<< HEAD
+=======
 DROP TRIGGER IF EXISTS update_lead_folders_updated_at ON public.lead_folders;
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
 DROP TRIGGER IF EXISTS update_smtp_accounts_updated_at ON public.smtp_accounts;
 DROP TRIGGER IF EXISTS update_campaigns_updated_at ON public.campaigns;
 DROP TRIGGER IF EXISTS update_sequence_steps_updated_at ON public.sequence_steps;
 DROP TRIGGER IF EXISTS update_leads_updated_at ON public.leads;
 DROP TRIGGER IF EXISTS update_email_messages_updated_at ON public.email_messages;
+<<<<<<< HEAD
+=======
 DROP TRIGGER IF EXISTS update_campaign_analytics_updated_at ON public.campaign_analytics;
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
 
 -- Create triggers for updated_at
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON public.users

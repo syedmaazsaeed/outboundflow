@@ -252,6 +252,8 @@ app.post('/send-email', async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
+=======
 // Unsubscribe endpoint - handle unsubscribe requests
 app.get('/unsubscribe', async (req, res) => {
   const { token, lead, campaign } = req.query;
@@ -435,6 +437,7 @@ app.get('/track/open', async (req, res) => {
   res.send(pixel);
 });
 
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
 // Sync inbox endpoint - fetch emails from Gmail via IMAP
 app.post('/sync-inbox', async (req, res) => {
   const { smtp, userId, supabaseUrl, supabaseKey } = req.body;
@@ -568,6 +571,8 @@ app.post('/sync-inbox', async (req, res) => {
                 id: data.id,
                 ...emailData
               });
+<<<<<<< HEAD
+=======
 
               // Automatic Reply Detection: Match incoming email to leads and update status
               try {
@@ -601,6 +606,7 @@ app.post('/sync-inbox', async (req, res) => {
                 console.error(`[Sync Inbox] Error in reply detection:`, replyDetectionError);
                 // Don't fail the sync if reply detection fails
               }
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
             }
           } catch (dbError) {
             console.error(`[Sync Inbox] Database error for email ${i + 1}:`, dbError);
@@ -684,9 +690,13 @@ app.listen(PORT, () => {
   console.log(`🔍 Health check: http://localhost:${PORT}/health`);
   console.log(`📬 Sync inbox: POST http://localhost:${PORT}/sync-inbox`);
   console.log(`📤 Send email: POST http://localhost:${PORT}/send-email`);
+<<<<<<< HEAD
+  console.log(`🔄 Proxy webhook: POST http://localhost:${PORT}/proxy-n8n-webhook\n`);
+=======
   console.log(`🔄 Proxy webhook: POST http://localhost:${PORT}/proxy-n8n-webhook`);
   console.log(`🚫 Unsubscribe: GET http://localhost:${PORT}/unsubscribe?token=xxx`);
   console.log(`📊 Track opens: GET http://localhost:${PORT}/track/open?c=campaignId&l=leadId&s=stepId\n`);
+>>>>>>> a9ff574285da102ae682d9c316ecbb13c92b4665
   console.log('To run this: "node server.js" (Requires express, nodemailer, and cors installed)');
   console.log('Note: For email syncing, also install: npm install imap-simple mailparser\n');
 });
