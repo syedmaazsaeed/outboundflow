@@ -86,8 +86,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
     };
     
     // Add timeout to prevent infinite hanging
+    const timeoutMs = 75000; // 75 seconds (60s for Supabase + 15s buffer)
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Save operation timed out after 30 seconds')), 30000);
+      setTimeout(() => reject(new Error(`Save operation timed out after ${timeoutMs / 1000} seconds. Your Supabase is responding slowly.`)), timeoutMs);
     });
     
     try {
@@ -98,14 +99,21 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
         timeoutPromise
       ]);
       console.log('[addAccount] Account saved successfully');
+      toast.success(`SMTP account "${acc.label}" created and saved to database successfully`);
       // Close form on success
       setIsAdding(false);
       setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0 });
     } catch (error: any) {
-      console.error('[addAccount] Error adding account:', error);
-      const errorMessage = error.message || 'Unknown error occurred';
-      toast.error(`Failed to save SMTP account: ${errorMessage}. Check browser console (F12) for details.`, 8000);
-      // Keep form open if save failed
+      const msg = error?.message || '';
+      if (msg === 'SUPABASE_OFFLINE_SAVED_LOCALLY') {
+        console.log('[addAccount] Account saved locally (Supabase unreachable).');
+        toast.success('Account saved locally. Supabase did not respond — see SUPABASE_TROUBLESHOOTING.md to fix cloud sync.', 8000);
+        setIsAdding(false);
+        setNewAcc({ label: '', host: '', port: 587, user: '', pass: '', secure: true, fromEmail: '', warmupEnabled: true, warmupSentToday: 0 });
+      } else {
+        console.error('[addAccount] Error adding account:', error);
+        toast.error(`Failed to save SMTP account: ${msg}. Check browser console (F12) for details.`, 8000);
+      }
     } finally {
       setIsSaving(false);
       console.log('[addAccount] Save operation completed');
@@ -290,6 +298,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ accounts, onUpdateAccounts 
                           )}
                         </button>
                     </div>
+                    {isSaving && (
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">Checking connection, then saving. If this lasts &gt;30s, open F12 → Network and look for the request to your Supabase URL.</p>
+                    )}
                  </div>
              )}
              {accounts.length === 0 ? (

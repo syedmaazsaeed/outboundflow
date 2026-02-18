@@ -1,12 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import type { 
-  User, 
-  Campaign, 
-  CampaignStatus, 
-  Lead, 
+import type {
+  User,
+  Campaign,
+  CampaignStatus,
+  Lead,
   LeadFolder,
-  SmtpAccount, 
-  EmailMessage, 
+  SmtpAccount,
+  EmailMessage,
   SequenceStep,
   ExecutionLog,
   CampaignAnalytics
@@ -45,7 +45,7 @@ export const authService = {
     if (!supabase) {
       return { user: null, error: 'Supabase is not configured' };
     }
-    
+
     try {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
@@ -63,7 +63,7 @@ export const authService = {
       // Create user profile - try to insert, but if it already exists, that's okay
       let profileData;
       let profileError;
-      
+
       const insertResult = await (supabase as any)
         .from('users')
         .insert({
@@ -82,7 +82,7 @@ export const authService = {
         // Check if it's a duplicate key error (profile already exists)
         const errorMsg = profileError.message || '';
         const errorCode = profileError.code || '';
-        
+
         if (errorMsg.includes('duplicate') || errorMsg.includes('already exists') || errorCode === '23505') {
           // Profile already exists, fetch it
           const fetchResult = await (supabase as any)
@@ -131,7 +131,7 @@ export const authService = {
     if (!supabase) {
       return { user: null, error: 'Supabase is not configured' };
     }
-    
+
     try {
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -141,9 +141,9 @@ export const authService = {
       if (authError) {
         // Provide more helpful error messages
         if (authError.message.includes('Email not confirmed') || authError.message.includes('email_not_confirmed')) {
-          return { 
-            user: null, 
-            error: 'Please check your email and click the confirmation link to verify your account before signing in.' 
+          return {
+            user: null,
+            error: 'Please check your email and click the confirmation link to verify your account before signing in.'
           };
         }
         return { user: null, error: authError.message };
@@ -151,9 +151,9 @@ export const authService = {
 
       // Check if user is confirmed
       if (authData.user && !authData.user.email_confirmed_at) {
-        return { 
-          user: null, 
-          error: 'Please check your email and click the confirmation link to verify your account before signing in.' 
+        return {
+          user: null,
+          error: 'Please check your email and click the confirmation link to verify your account before signing in.'
         };
       }
 
@@ -187,7 +187,7 @@ export const authService = {
           // If creation fails, check if it's a duplicate (race condition)
           const errorMsg = insertResult.error.message || '';
           const errorCode = insertResult.error.code || '';
-          
+
           if (errorMsg.includes('duplicate') || errorMsg.includes('already exists') || errorCode === '23505') {
             // Profile was created by another request, fetch it
             const fetchResult = await (supabase as any)
@@ -195,7 +195,7 @@ export const authService = {
               .select('*')
               .eq('id', authUser.id)
               .single();
-            
+
             if (fetchResult.error || !fetchResult.data) {
               return { user: null, error: `Profile creation failed: ${insertResult.error.message}` };
             }
@@ -232,7 +232,7 @@ export const authService = {
   // Get current user
   async getCurrentUser(): Promise<User | null> {
     if (!supabase) return null;
-    
+
     try {
       // First check if there's a session to avoid unnecessary API calls
       const { data: { session } } = await supabase.auth.getSession();
@@ -242,7 +242,7 @@ export const authService = {
 
       // Now get the user (this should succeed since we have a session)
       const { data: { user: authUser }, error: getUserError } = await supabase.auth.getUser();
-      
+
       if (getUserError) {
         // 403 is expected when not authenticated - don't log it
         if (getUserError.message.includes('403') || getUserError.message.includes('Forbidden')) {
@@ -251,7 +251,7 @@ export const authService = {
         console.error('Error getting user:', getUserError);
         return null;
       }
-      
+
       if (!authUser) return null;
 
       const { data: profileData, error } = await (supabase as any)
@@ -282,9 +282,9 @@ export const authService = {
   // Listen to auth state changes
   onAuthStateChange(callback: (user: User | null) => void) {
     if (!supabase) {
-      return { data: { subscription: { unsubscribe: () => {} } } };
+      return { data: { subscription: { unsubscribe: () => { } } } };
     }
-    
+
     return supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         const user = await this.getCurrentUser();
@@ -344,8 +344,9 @@ export const campaignService = {
   // Get all campaigns for current user
   async getAll(userId: string): Promise<Campaign[]> {
     if (!supabase) return [];
-    
-    const { data, error } = await (supabase as any)
+
+    console.log('[campaignService.getAll] Fetching campaigns w/ timeout...');
+    const dataPromise = (supabase as any)
       .from('campaigns')
       .select(`
         *,
@@ -356,33 +357,41 @@ export const campaignService = {
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching campaigns:', error);
-      return [];
-    }
+    // 30s timeout for cold start
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Campaign fetch timed out')), 30000)
+    );
 
-    return (data || []).map(transformCampaign);
+    try {
+      const { data, error } = await Promise.race([dataPromise, timeoutPromise]) as any;
+      if (error) throw error;
+      return (data || []).map(transformCampaign);
+    } catch (err) {
+      console.error('Error fetching campaigns:', err);
+      // Re-throw to trigger App.tsx fallback
+      throw err;
+    }
   },
 
   // Get single campaign
   async getById(id: string): Promise<Campaign | null> {
     if (!supabase) return null;
-    
+
     try {
       console.log('[getById] Fetching campaign:', id);
       const startTime = Date.now();
-      
+
       // First, check if campaign exists with a simple query (with timeout)
       const existsPromise = (supabase as any)
         .from('campaigns')
         .select('id')
         .eq('id', id)
         .single();
-      
-      const existsTimeout = new Promise<null>((_, reject) => 
+
+      const existsTimeout = new Promise<null>((_, reject) =>
         setTimeout(() => reject(new Error('Campaign existence check timed out')), 5000)
       );
-      
+
       let campaignExists: any = null;
       try {
         const existsResult = await Promise.race([existsPromise, existsTimeout]);
@@ -395,14 +404,14 @@ export const campaignService = {
         console.warn('[getById] Error or timeout checking campaign existence:', existsError.message);
         // Continue anyway - might be a timeout, not a missing campaign
       }
-      
+
       if (!campaignExists) {
         console.log('[getById] Campaign does not exist');
         return null;
       }
-      
+
       console.log('[getById] Campaign exists, fetching full data with relations...');
-      
+
       // Fetch with relations (with timeout)
       const fetchPromise = (supabase as any)
         .from('campaigns')
@@ -414,14 +423,14 @@ export const campaignService = {
         `)
         .eq('id', id)
         .single();
-      
-      const fetchTimeout = new Promise<null>((_, reject) => 
+
+      const fetchTimeout = new Promise<null>((_, reject) =>
         setTimeout(() => reject(new Error('Campaign fetch with relations timed out')), 10000)
       );
 
       let data: any = null;
       let error: any = null;
-      
+
       try {
         const result = await Promise.race([fetchPromise, fetchTimeout]);
         data = result.data;
@@ -434,11 +443,11 @@ export const campaignService = {
           .select('*')
           .eq('id', id)
           .single();
-        
-        const simpleTimeout = new Promise<null>((_, reject) => 
+
+        const simpleTimeout = new Promise<null>((_, reject) =>
           setTimeout(() => reject(new Error('Simple fetch timed out')), 5000)
         );
-        
+
         try {
           const simpleResult = await Promise.race([simpleFetchPromise, simpleTimeout]);
           if (simpleResult.data) {
@@ -483,9 +492,9 @@ export const campaignService = {
       console.error('[Campaign Create] Supabase client not initialized');
       throw new Error('Supabase client not initialized');
     }
-    
+
     console.log('[Campaign Create] Starting campaign creation...', campaign.name);
-    
+
     const { data: campaignData, error: campaignError } = await ((supabase as any)
       .from('campaigns')
       .insert({
@@ -508,7 +517,7 @@ export const campaignService = {
       console.error('[Campaign Create] Error creating campaign:', campaignError);
       throw new Error(`Failed to create campaign: ${campaignError?.message || campaignError?.code || 'Unknown error'}`);
     }
-    
+
     console.log('[Campaign Create] Campaign record created:', campaignData.id);
 
     // Insert sequence steps
@@ -565,8 +574,8 @@ export const campaignService = {
         folder_id: lead.folderId || null,
         assigned_inbox_id: lead.assignedInboxId || null,
         // Only include unsubscribed_at if it exists (handle schema mismatch gracefully)
-        ...(lead.unsubscribedAt !== undefined && lead.unsubscribedAt !== null 
-          ? { unsubscribed_at: lead.unsubscribedAt } 
+        ...(lead.unsubscribedAt !== undefined && lead.unsubscribedAt !== null
+          ? { unsubscribed_at: lead.unsubscribedAt }
           : {})
       }));
 
@@ -591,7 +600,7 @@ export const campaignService = {
     }
 
     console.log('[Campaign Create] Campaign created, reconstructing from saved data...');
-    
+
     // Don't call getById - it's slow and can timeout
     // Instead, reconstruct the campaign from what we just created
     const createdCampaign: Campaign = {
@@ -605,7 +614,7 @@ export const campaignService = {
       senderAccountIds: campaign.senderAccountIds || [],
       createdAt: (campaignData as any).created_at || new Date().toISOString()
     };
-    
+
     console.log('[Campaign Create] Campaign creation completed successfully (reconstructed from saved data)');
     return createdCampaign;
   },
@@ -616,9 +625,9 @@ export const campaignService = {
       console.error('[Campaign Update] Supabase client not initialized');
       throw new Error('Supabase client not initialized');
     }
-    
+
     console.log('[Campaign Update] Starting update for campaign:', campaign.id);
-    
+
     // Validate campaign ID is a valid UUID format
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(campaign.id)) {
@@ -631,14 +640,14 @@ export const campaignService = {
       const { id, createdAt, ...campaignWithoutId } = campaign;
       return await this.create(session.user.id, campaignWithoutId);
     }
-    
+
     // Skip existence check - just try to update directly
     // If it doesn't exist, the update will fail and we'll handle it
     // This is faster and avoids the hanging query issue
     console.log('[Campaign Update] Skipping existence check, attempting direct update...');
-    
+
     console.log('[Campaign Update] Updating campaign record in database...');
-    
+
     // Add timeout to update query (10 seconds)
     const updatePromise = ((supabase as any)
       .from('campaigns')
@@ -657,14 +666,14 @@ export const campaignService = {
       .eq('id', campaign.id)
       .select()
       .single();
-    
-    const updateTimeout = new Promise<null>((_, reject) => 
+
+    const updateTimeout = new Promise<null>((_, reject) =>
       setTimeout(() => reject(new Error('Campaign update query timed out after 10 seconds')), 10000)
     );
-    
+
     let campaignData: any = null;
     let campaignError: any = null;
-    
+
     try {
       const result = await Promise.race([updatePromise, updateTimeout]);
       campaignData = result.data;
@@ -695,11 +704,11 @@ export const campaignService = {
       console.error('[Campaign Update] Error updating campaign:', campaignError);
       throw new Error(`Failed to update campaign: ${campaignError.message || campaignError.code || 'Unknown error'}`);
     }
-    
+
     if (!campaignData) {
       throw new Error('Campaign update returned no data');
     }
-    
+
     console.log('[Campaign Update] Campaign record updated successfully');
 
     // Delete existing steps, accounts, and leads (in parallel for speed, with timeout)
@@ -712,11 +721,11 @@ export const campaignService = {
         (supabase as any).from('campaign_accounts').delete().eq('campaign_id', campaign.id),
         (supabase as any).from('leads').delete().eq('campaign_id', campaign.id)
       ];
-      
-      const deleteTimeout = new Promise<null>((_, reject) => 
+
+      const deleteTimeout = new Promise<null>((_, reject) =>
         setTimeout(() => reject(new Error('Delete operations timed out')), 15000)
       );
-      
+
       await Promise.race([Promise.all(deletePromises), deleteTimeout]);
       const deleteDuration = Date.now() - deleteStartTime;
       console.log(`[Campaign Update] Related records deleted successfully in ${deleteDuration}ms`);
@@ -764,92 +773,92 @@ export const campaignService = {
       console.log('[Campaign Update] Campaign accounts inserted successfully');
     }
 
-      // Update leads - use UPDATE instead of DELETE+INSERT to preserve status changes
-      // This ensures lead status updates (like 'CONTACTED') are saved even if delete times out
-      if (campaign.leads.length > 0) {
-        console.log('[Campaign Update] Updating leads...', campaign.leads.length);
-        console.log('[Campaign Update] Lead statuses:', campaign.leads.map(l => ({ email: l.email, status: l.status })));
-        
-        const batchSize = 50; // Smaller batches for updates
-        for (let i = 0; i < campaign.leads.length; i += batchSize) {
-          const batch = campaign.leads.slice(i, i + batchSize);
-          console.log(`[Campaign Update] Updating leads batch ${Math.floor(i / batchSize) + 1}...`);
-          
-          // Update each lead individually to ensure status changes are saved
-          // This is more reliable than batch operations when status is critical
-          for (const lead of batch) {
-            const leadData: any = {
-              email: lead.email,
-              first_name: lead.firstName,
-              last_name: lead.lastName,
-              company: lead.company,
-              website: lead.website || null,
-              custom_variable: lead.customVariable || null,
-              custom_fields: lead.customFields || {},
-              verification_status: lead.verificationStatus,
-              status: lead.status, // CRITICAL: This is what updates the dashboard
-              folder_id: lead.folderId || null,
-              assigned_inbox_id: lead.assignedInboxId || null,
-              updated_at: new Date().toISOString()
-            };
-            
-            // Only include unsubscribed_at if it exists
-            if (lead.unsubscribedAt !== undefined && lead.unsubscribedAt !== null) {
-              leadData.unsubscribed_at = lead.unsubscribedAt;
-            }
-            
-            // Try to update existing lead first
-            const { data: existingLead, error: selectError } = await (supabase as any)
+    // Update leads - use UPDATE instead of DELETE+INSERT to preserve status changes
+    // This ensures lead status updates (like 'CONTACTED') are saved even if delete times out
+    if (campaign.leads.length > 0) {
+      console.log('[Campaign Update] Updating leads...', campaign.leads.length);
+      console.log('[Campaign Update] Lead statuses:', campaign.leads.map(l => ({ email: l.email, status: l.status })));
+
+      const batchSize = 50; // Smaller batches for updates
+      for (let i = 0; i < campaign.leads.length; i += batchSize) {
+        const batch = campaign.leads.slice(i, i + batchSize);
+        console.log(`[Campaign Update] Updating leads batch ${Math.floor(i / batchSize) + 1}...`);
+
+        // Update each lead individually to ensure status changes are saved
+        // This is more reliable than batch operations when status is critical
+        for (const lead of batch) {
+          const leadData: any = {
+            email: lead.email,
+            first_name: lead.firstName,
+            last_name: lead.lastName,
+            company: lead.company,
+            website: lead.website || null,
+            custom_variable: lead.customVariable || null,
+            custom_fields: lead.customFields || {},
+            verification_status: lead.verificationStatus,
+            status: lead.status, // CRITICAL: This is what updates the dashboard
+            folder_id: lead.folderId || null,
+            assigned_inbox_id: lead.assignedInboxId || null,
+            updated_at: new Date().toISOString()
+          };
+
+          // Only include unsubscribed_at if it exists
+          if (lead.unsubscribedAt !== undefined && lead.unsubscribedAt !== null) {
+            leadData.unsubscribed_at = lead.unsubscribedAt;
+          }
+
+          // Try to update existing lead first
+          const { data: existingLead, error: selectError } = await (supabase as any)
+            .from('leads')
+            .select('id')
+            .eq('campaign_id', campaign.id)
+            .eq('email', lead.email)
+            .single();
+
+          if (existingLead && !selectError) {
+            // Lead exists, update it
+            const { error: updateError } = await (supabase as any)
               .from('leads')
-              .select('id')
-              .eq('campaign_id', campaign.id)
-              .eq('email', lead.email)
-              .single();
-              
-            if (existingLead && !selectError) {
-              // Lead exists, update it
-              const { error: updateError } = await (supabase as any)
-                .from('leads')
-                .update(leadData)
-                .eq('id', existingLead.id);
-                
-              if (updateError) {
-                console.error(`[Campaign Update] Failed to update lead ${lead.email}:`, updateError);
-                // Check if it's a missing column error
-                if (updateError.message && updateError.message.includes('unsubscribed_at')) {
-                  throw new Error(`Database schema error: unsubscribed_at column is missing. Please run ADD_UNSUBSCRIBED_AT_COLUMN.sql in Supabase SQL Editor.`);
-                }
-              } else {
-                console.log(`[Campaign Update] ✓ Updated lead ${lead.email} with status: ${lead.status}`);
+              .update(leadData)
+              .eq('id', existingLead.id);
+
+            if (updateError) {
+              console.error(`[Campaign Update] Failed to update lead ${lead.email}:`, updateError);
+              // Check if it's a missing column error
+              if (updateError.message && updateError.message.includes('unsubscribed_at')) {
+                throw new Error(`Database schema error: unsubscribed_at column is missing. Please run ADD_UNSUBSCRIBED_AT_COLUMN.sql in Supabase SQL Editor.`);
               }
             } else {
-              // Lead doesn't exist, insert it
-              const { error: insertError } = await (supabase as any)
-                .from('leads')
-                .insert({
-                  campaign_id: campaign.id,
-                  ...leadData
-                });
-                
-              if (insertError) {
-                console.error(`[Campaign Update] Failed to insert lead ${lead.email}:`, insertError);
-                // Check if it's a missing column error
-                if (insertError.message && insertError.message.includes('unsubscribed_at')) {
-                  throw new Error(`Database schema error: unsubscribed_at column is missing. Please run ADD_UNSUBSCRIBED_AT_COLUMN.sql in Supabase SQL Editor.`);
-                }
-              } else {
-                console.log(`[Campaign Update] ✓ Inserted new lead ${lead.email} with status: ${lead.status}`);
+              console.log(`[Campaign Update] ✓ Updated lead ${lead.email} with status: ${lead.status}`);
+            }
+          } else {
+            // Lead doesn't exist, insert it
+            const { error: insertError } = await (supabase as any)
+              .from('leads')
+              .insert({
+                campaign_id: campaign.id,
+                ...leadData
+              });
+
+            if (insertError) {
+              console.error(`[Campaign Update] Failed to insert lead ${lead.email}:`, insertError);
+              // Check if it's a missing column error
+              if (insertError.message && insertError.message.includes('unsubscribed_at')) {
+                throw new Error(`Database schema error: unsubscribed_at column is missing. Please run ADD_UNSUBSCRIBED_AT_COLUMN.sql in Supabase SQL Editor.`);
               }
+            } else {
+              console.log(`[Campaign Update] ✓ Inserted new lead ${lead.email} with status: ${lead.status}`);
             }
           }
         }
-        console.log('[Campaign Update] All leads updated successfully');
+      }
+      console.log('[Campaign Update] All leads updated successfully');
     } else {
       console.log('[Campaign Update] No leads to insert');
     }
 
     console.log('[Campaign Update] Campaign update completed, skipping getById to avoid timeout');
-    
+
     // Don't call getById - it's slow and can timeout
     // Instead, reconstruct the campaign from what we just saved
     // This is faster and more reliable
@@ -862,7 +871,7 @@ export const campaignService = {
       leads: campaign.leads,
       senderAccountIds: campaign.senderAccountIds || []
     };
-    
+
     console.log('[Campaign Update] Campaign update completed successfully (reconstructed from saved data)');
     return updatedCampaign;
   },
@@ -870,7 +879,7 @@ export const campaignService = {
   // Update campaign leads only
   async updateLeads(campaignId: string, leads: Lead[]): Promise<boolean> {
     if (!supabase) return false;
-    
+
     try {
       // Delete existing leads
       const { error: deleteError } = await (supabase as any)
@@ -900,8 +909,8 @@ export const campaignService = {
           folder_id: lead.folderId || null,
           assigned_inbox_id: lead.assignedInboxId || null,
           // Only include unsubscribed_at if it exists (handle schema mismatch gracefully)
-          ...(lead.unsubscribedAt !== undefined && lead.unsubscribedAt !== null 
-            ? { unsubscribed_at: lead.unsubscribedAt } 
+          ...(lead.unsubscribedAt !== undefined && lead.unsubscribedAt !== null
+            ? { unsubscribed_at: lead.unsubscribedAt }
             : {})
         }));
 
@@ -909,7 +918,7 @@ export const campaignService = {
         for (let i = 0; i < leadsToInsert.length; i += batchSize) {
           const batch = leadsToInsert.slice(i, i + batchSize);
           const { error: insertError } = await ((supabase as any).from('leads').insert(batch) as any);
-          
+
           if (insertError) {
             console.error(`Error inserting leads batch ${Math.floor(i / batchSize) + 1}:`, insertError);
             // Check if it's a missing column error
@@ -931,7 +940,7 @@ export const campaignService = {
   // Delete campaign
   async delete(id: string): Promise<boolean> {
     if (!supabase) return false;
-    
+
     const { error } = await supabase
       .from('campaigns')
       .delete()
@@ -948,23 +957,51 @@ export const campaignService = {
 
 // ==================== SMTP ACCOUNTS ====================
 
+const SUPABASE_PREFLIGHT_TIMEOUT_MS = 10000; // 10s for quick preflight check
+
 export const smtpService = {
+  /**
+   * Quick check that Supabase responds (avoids 7-min loading when unreachable).
+   * Call before create/update; throws if no response within 10s.
+   */
+  async checkConnection(userId: string): Promise<void> {
+    if (!supabase) throw new Error('Supabase is not configured.');
+    const preflightPromise = (supabase as any)
+      .from('smtp_accounts')
+      .select('id')
+      .eq('user_id', userId)
+      .limit(1);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Supabase did not respond in 10s. Check VITE_SUPABASE_URL and network (F12 → Network).')), SUPABASE_PREFLIGHT_TIMEOUT_MS)
+    );
+    const result = await Promise.race([preflightPromise, timeoutPromise]);
+    if (result?.error) throw new Error(result.error.message || 'Supabase preflight failed.');
+  },
+
   // Get all SMTP accounts for current user
   async getAll(userId: string): Promise<SmtpAccount[]> {
     if (!supabase) return [];
-    
-    const { data, error } = await (supabase as any)
+
+    console.log('[smtpService.getAll] Fetching SMTP accounts w/ timeout...');
+    const dataPromise = (supabase as any)
       .from('smtp_accounts')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching SMTP accounts:', error);
-      return [];
-    }
+    // 30s timeout for cold start
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('SMTP accounts fetch timed out')), 30000)
+    );
 
-    return (data || []).map(transformSmtpAccount);
+    try {
+      const { data, error } = await Promise.race([dataPromise, timeoutPromise]) as any;
+      if (error) throw error;
+      return (data || []).map(transformSmtpAccount);
+    } catch (err) {
+      console.error('Error fetching SMTP accounts:', err);
+      throw err;
+    }
   },
 
   // Create SMTP account
@@ -974,10 +1011,12 @@ export const smtpService = {
       console.error('[smtpService.create]', errorMsg);
       throw new Error(errorMsg);
     }
-    
+
+    const SMTP_REQUEST_TIMEOUT_MS = 60000; // 60 seconds timeout for slow Supabase
+
     console.log('[smtpService.create] Creating account:', { userId, label: account.label });
-    
-    const { data, error } = await (supabase as any)
+
+    const insertPromise = (supabase as any)
       .from('smtp_accounts')
       .insert({
         user_id: userId,
@@ -996,6 +1035,21 @@ export const smtpService = {
       })
       .select()
       .single();
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Supabase request timed out after ${SMTP_REQUEST_TIMEOUT_MS / 1000}s. Check network, Supabase project status, and RLS policies on smtp_accounts.`)), SMTP_REQUEST_TIMEOUT_MS)
+    );
+
+    let data: any = null;
+    let error: any = null;
+    try {
+      const result = await Promise.race([insertPromise, timeoutPromise]);
+      data = result?.data ?? null;
+      error = result?.error ?? null;
+    } catch (raceError: any) {
+      if (raceError?.message?.includes('timed out')) throw raceError;
+      error = raceError;
+    }
 
     if (error) {
       const errorMsg = `Database error: ${error.message || JSON.stringify(error)}`;
@@ -1016,8 +1070,10 @@ export const smtpService = {
   // Update SMTP account
   async update(account: SmtpAccount): Promise<SmtpAccount | null> {
     if (!supabase) return null;
-    
-    const { data, error } = await (supabase as any)
+
+    const SMTP_REQUEST_TIMEOUT_MS = 60000; // 60 seconds timeout for slow Supabase
+
+    const updatePromise = (supabase as any)
       .from('smtp_accounts')
       .update({
         label: account.label,
@@ -1037,8 +1093,24 @@ export const smtpService = {
       .select()
       .single();
 
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Supabase request timed out after ${SMTP_REQUEST_TIMEOUT_MS / 1000}s. Check network, Supabase project status, and RLS policies on smtp_accounts.`)), SMTP_REQUEST_TIMEOUT_MS)
+    );
+
+    let data: any = null;
+    let error: any = null;
+    try {
+      const result = await Promise.race([updatePromise, timeoutPromise]);
+      data = result?.data ?? null;
+      error = result?.error ?? null;
+    } catch (raceError: any) {
+      if (raceError?.message?.includes('timed out')) throw raceError;
+      error = raceError;
+    }
+
     if (error || !data) {
       console.error('Error updating SMTP account:', error);
+      if (error?.message?.includes('timed out')) throw error;
       return null;
     }
 
@@ -1048,7 +1120,7 @@ export const smtpService = {
   // Delete SMTP account
   async delete(id: string): Promise<boolean> {
     if (!supabase) return false;
-    
+
     const { error } = await supabase
       .from('smtp_accounts')
       .delete()
@@ -1069,25 +1141,33 @@ export const emailService = {
   // Get all email messages for current user
   async getAll(userId: string): Promise<EmailMessage[]> {
     if (!supabase) return [];
-    
-    const { data, error } = await (supabase as any)
+
+    console.log('[emailService.getAll] Fetching emails w/ timeout...');
+    const dataPromise = (supabase as any)
       .from('email_messages')
       .select('*')
       .eq('user_id', userId)
       .order('date', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching email messages:', error);
-      return [];
-    }
+    // 30s timeout
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Email fetch timed out')), 30000)
+    );
 
-    return (data || []).map(transformEmailMessage);
+    try {
+      const { data, error } = await Promise.race([dataPromise, timeoutPromise]) as any;
+      if (error) throw error;
+      return (data || []).map(transformEmailMessage);
+    } catch (err) {
+      console.error('Error fetching email messages:', err);
+      throw err;
+    }
   },
 
   // Create email message
   async create(userId: string, message: Omit<EmailMessage, 'id'>): Promise<EmailMessage | null> {
     if (!supabase) return null;
-    
+
     const { data, error } = await (supabase as any)
       .from('email_messages')
       .insert({
@@ -1114,7 +1194,7 @@ export const emailService = {
   // Update email message
   async update(message: EmailMessage): Promise<EmailMessage | null> {
     if (!supabase) return null;
-    
+
     const { data, error } = await (supabase as any)
       .from('email_messages')
       .update({
@@ -1141,7 +1221,7 @@ export const emailService = {
   // Delete email message
   async delete(id: string): Promise<boolean> {
     if (!supabase) return false;
-    
+
     const { error } = await supabase
       .from('email_messages')
       .delete()
@@ -1162,7 +1242,7 @@ export const logService = {
   // Get logs for a campaign
   async getByCampaign(campaignId: string): Promise<ExecutionLog[]> {
     if (!supabase) return [];
-    
+
     const { data, error } = await (supabase as any)
       .from('execution_logs')
       .select('*')
@@ -1183,14 +1263,14 @@ export const logService = {
       console.warn('[logService.create] Supabase not configured, log not saved');
       return null;
     }
-    
+
     console.log('[logService.create] Saving execution log:', {
       campaignId: log.campaignId,
       leadId: log.leadId,
       status: log.status,
       type: log.type
     });
-    
+
     const { data, error } = await (supabase as any)
       .from('execution_logs')
       .insert({
@@ -1231,7 +1311,7 @@ export const folderService = {
   // Get all folders for current user
   async getAll(userId: string): Promise<LeadFolder[]> {
     if (!supabase) return [];
-    
+
     const { data, error } = await (supabase as any)
       .from('lead_folders')
       .select('*')
@@ -1254,7 +1334,7 @@ export const folderService = {
   // Create folder
   async create(userId: string, folder: Omit<LeadFolder, 'id' | 'createdAt'>): Promise<LeadFolder | null> {
     if (!supabase) return null;
-    
+
     const { data, error } = await (supabase as any)
       .from('lead_folders')
       .insert({
@@ -1281,7 +1361,7 @@ export const folderService = {
   // Update folder
   async update(folder: LeadFolder): Promise<LeadFolder | null> {
     if (!supabase) return null;
-    
+
     const { data, error } = await (supabase as any)
       .from('lead_folders')
       .update({
@@ -1308,7 +1388,7 @@ export const folderService = {
   // Delete folder
   async delete(id: string): Promise<boolean> {
     if (!supabase) return false;
-    
+
     const { error } = await (supabase as any)
       .from('lead_folders')
       .delete()
@@ -1329,7 +1409,7 @@ export const analyticsService = {
   // Get analytics for a campaign
   async getByCampaign(campaignId: string): Promise<CampaignAnalytics[]> {
     if (!supabase) return [];
-    
+
     const { data, error } = await (supabase as any)
       .from('campaign_analytics')
       .select('*')
@@ -1359,7 +1439,7 @@ export const analyticsService = {
   // Update or create analytics for a campaign date
   async upsert(analytics: Omit<CampaignAnalytics, 'id' | 'createdAt' | 'updatedAt'>): Promise<CampaignAnalytics | null> {
     if (!supabase) return null;
-    
+
     const { data, error } = await (supabase as any)
       .from('campaign_analytics')
       .upsert({

@@ -37,7 +37,7 @@ const AppContent: React.FC = () => {
           const hashParams = new URLSearchParams(window.location.hash.substring(1));
           const accessToken = hashParams.get('access_token');
           const type = hashParams.get('type');
-          
+
           if (accessToken) {
             if (type === 'signup') {
               // User confirmed their email via the link
@@ -45,7 +45,7 @@ const AppContent: React.FC = () => {
               if (supabase) {
                 const hashParams = new URLSearchParams(window.location.hash.substring(1));
                 const refreshToken = hashParams.get('refresh_token');
-                
+
                 if (refreshToken) {
                   await supabase.auth.setSession({
                     access_token: accessToken,
@@ -53,7 +53,7 @@ const AppContent: React.FC = () => {
                   });
                 }
               }
-              
+
               // Clear the hash and reload to get authenticated state
               window.location.hash = '';
               // Small delay to ensure session is set and profile can be created
@@ -76,7 +76,7 @@ const AppContent: React.FC = () => {
             setIsAuthenticated(true);
           }
           setIsLoading(false);
-          
+
           // Listen for auth state changes
           const { data: { subscription } } = authService.onAuthStateChange((user) => {
             if (user) {
@@ -90,7 +90,7 @@ const AppContent: React.FC = () => {
               setReceivedEmails([]);
             }
           });
-          
+
           return () => {
             subscription.unsubscribe();
           };
@@ -98,12 +98,12 @@ const AppContent: React.FC = () => {
           // Fallback to localStorage for development
           const savedUser = localStorage.getItem('outboundflow_user');
           const savedSession = localStorage.getItem('outboundflow_session');
-          
+
           if (savedUser && savedSession) {
             try {
               const userData = JSON.parse(savedUser);
               const sessionData = JSON.parse(savedSession);
-              
+
               // Check if session is still valid (24 hours)
               const sessionExpiry = new Date(sessionData.expiresAt);
               if (sessionExpiry > new Date()) {
@@ -139,15 +139,36 @@ const AppContent: React.FC = () => {
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
           if (supabaseUrl) {
             // Load from Supabase
-            const [campaignsData, smtpData, emailsData] = await Promise.all([
-              campaignService.getAll(user.id),
-              smtpService.getAll(user.id),
-              emailService.getAll(user.id),
-            ]);
-            
-            setCampaigns(campaignsData);
-            setSmtpAccounts(smtpData);
-            setReceivedEmails(emailsData);
+            try {
+              console.log('[loadData] Loading data from Supabase for user:', user.id);
+              const [campaignsData, smtpData, emailsData] = await Promise.all([
+                campaignService.getAll(user.id),
+                smtpService.getAll(user.id),
+                emailService.getAll(user.id),
+              ]);
+
+              console.log('[loadData] Loaded from Supabase:', {
+                campaigns: campaignsData.length,
+                smtp: smtpData.length,
+                emails: emailsData.length
+              });
+
+              setCampaigns(campaignsData);
+              setSmtpAccounts(smtpData);
+              setReceivedEmails(emailsData);
+            } catch (error) {
+              console.error('Error loading Supabase data, falling back to localStorage:', error);
+              // Fallback to localStorage
+              const savedCampaigns = localStorage.getItem(`outboundflow_campaigns_${user.id}`);
+              const savedSmtp = localStorage.getItem(`outboundflow_smtp_${user.id}`);
+              const savedInbox = localStorage.getItem(`outboundflow_inbox_${user.id}`);
+
+              if (savedCampaigns) setCampaigns(JSON.parse(savedCampaigns));
+              if (savedSmtp) setSmtpAccounts(JSON.parse(savedSmtp));
+              if (savedInbox) setReceivedEmails(JSON.parse(savedInbox));
+
+              toast.error('Could not connect to database. Loaded local data instead.');
+            }
           } else {
             // Fallback to localStorage
             const savedCampaigns = localStorage.getItem(`outboundflow_campaigns_${user.id}`);
@@ -165,28 +186,28 @@ const AppContent: React.FC = () => {
 
       loadData();
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, toast]);
 
   // Authentication functions
   const handleLogin = async (email: string, password: string): Promise<boolean> => {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      
+
       if (supabaseUrl) {
         // Use Supabase authentication
         const { user: authenticatedUser, error } = await authService.signIn(email, password);
-        
+
         if (error) {
           console.error('Login error:', error);
           return false;
         }
-        
+
         if (authenticatedUser) {
           setUser(authenticatedUser);
           setIsAuthenticated(true);
           return true;
         }
-        
+
         return false;
       } else {
         // No Supabase configured - show error
@@ -202,15 +223,15 @@ const AppContent: React.FC = () => {
   const handleSignUp = async (email: string, password: string, name: string): Promise<boolean> => {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      
+
       if (supabaseUrl) {
         const { user: newUser, error } = await authService.signUp(email, password, name);
-        
+
         if (error) {
           console.error('Sign up error:', error);
           return false;
         }
-        
+
         // Note: User needs to verify email before they can sign in
         // For now, we'll return true to show success message
         return true;
@@ -227,7 +248,7 @@ const AppContent: React.FC = () => {
   const handleLogout = async () => {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      
+
       if (supabaseUrl) {
         // Sign out from Supabase
         await authService.signOut();
@@ -235,7 +256,7 @@ const AppContent: React.FC = () => {
         // Clear localStorage
         localStorage.removeItem('outboundflow_user');
         localStorage.removeItem('outboundflow_session');
-        
+
         if (user) {
           localStorage.removeItem(`outboundflow_campaigns_${user.id}`);
           localStorage.removeItem(`outboundflow_smtp_${user.id}`);
@@ -245,7 +266,7 @@ const AppContent: React.FC = () => {
     } catch (error) {
       console.error('Logout error:', error);
     }
-    
+
     setUser(null);
     setIsAuthenticated(false);
     setCampaigns([]);
@@ -257,12 +278,12 @@ const AppContent: React.FC = () => {
 
   const saveCampaigns = async (updated: Campaign[]) => {
     setCampaigns(updated);
-    
+
     if (!user) return;
-    
+
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      
+
       if (supabaseUrl) {
         // Save to Supabase - sync each campaign
         for (const campaign of updated) {
@@ -273,7 +294,7 @@ const AppContent: React.FC = () => {
             await campaignService.create(user.id, campaign);
           }
         }
-        
+
         // Delete campaigns that were removed
         const existingIds = updated.map(c => c.id);
         const toDelete = campaigns.filter(c => !existingIds.includes(c.id));
@@ -294,36 +315,60 @@ const AppContent: React.FC = () => {
       console.error('Cannot save SMTP accounts: No user logged in');
       throw new Error('No user logged in');
     }
-    
+
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    console.log('[saveSmtp] Starting save...', { 
-      accountCount: updated.length, 
-      hasSupabase: !!supabaseUrl,
-      userId: user.id 
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    console.log('[saveSmtp] Starting save...', {
+      accountCount: updated.length,
+      userId: user.id,
+      supabaseUrl: supabaseUrl ? `${supabaseUrl.replace(/\/$/, '').slice(0, 40)}...` : 'NOT SET',
+      anonKeySet: !!anonKey,
     });
-    
+
     try {
       if (supabaseUrl) {
-        // Save to Supabase
+        // Save to Supabase (no preflight check - just try it directly)
         const savedAccounts: SmtpAccount[] = [];
         const errors: string[] = [];
-        
+
+        // Helper: skip Supabase update when nothing changed (avoids timeout when only adding a new account)
+        const smtpAccountUnchanged = (a: SmtpAccount, b: SmtpAccount) =>
+          a.label === b.label && a.host === b.host && a.port === b.port && a.user === b.user &&
+          a.pass === b.pass && a.secure === b.secure && a.fromEmail === b.fromEmail &&
+          a.warmupEnabled === b.warmupEnabled && (a.warmupSentToday ?? 0) === (b.warmupSentToday ?? 0) &&
+          (a.dailySendLimit ?? 100) === (b.dailySendLimit ?? 100) &&
+          (a.sentToday ?? 0) === (b.sentToday ?? 0) && (a.lastResetDate ?? '') === (b.lastResetDate ?? '');
+
         for (const account of updated) {
           const existing = smtpAccounts.find(a => a.id === account.id);
           try {
             if (existing) {
+              if (smtpAccountUnchanged(existing, account)) {
+                // No changes — skip update to avoid unnecessary Supabase call (and timeouts when adding another account)
+                savedAccounts.push(existing);
+                console.log(`[saveSmtp] Skipping unchanged account: ${account.label}`);
+                continue;
+              }
               // Update existing account
               console.log(`[saveSmtp] Updating account: ${account.id}`);
-              const updatedAccount = await smtpService.update(account);
-              if (updatedAccount) {
-                savedAccounts.push(updatedAccount);
-                console.log(`[saveSmtp] Successfully updated account: ${account.id}`);
-              } else {
-                const errorMsg = `Failed to update SMTP account: ${account.label}`;
-                console.error(`[saveSmtp] ${errorMsg}`);
-                errors.push(errorMsg);
-                // Keep the account in the list even if update failed
-                savedAccounts.push(account);
+              try {
+                const updatedAccount = await smtpService.update(account);
+                if (updatedAccount) {
+                  savedAccounts.push(updatedAccount);
+                  console.log(`[saveSmtp] Successfully updated account: ${account.id}`);
+                } else {
+                  const errorMsg = `Failed to update SMTP account: ${account.label}`;
+                  console.error(`[saveSmtp] ${errorMsg}`);
+                  errors.push(errorMsg);
+                  savedAccounts.push(account);
+                }
+              } catch (updateError: any) {
+                if (updateError?.message?.includes('timed out')) {
+                  console.warn(`[saveSmtp] Update timed out for ${account.label}, using cached version`);
+                  savedAccounts.push(account); // Use the version we have
+                } else {
+                  throw updateError;
+                }
               }
             } else {
               // Create new account - exclude id as it will be generated by database
@@ -342,12 +387,22 @@ const AppContent: React.FC = () => {
             }
           } catch (accountError: any) {
             console.error(`[saveSmtp] Error processing account ${account.label}:`, accountError);
+            
+            // If it's a timeout, save what we have so far and continue
+            if (accountError?.message?.includes('timed out')) {
+              console.warn('[saveSmtp] Timeout on account, saving progress so far');
+              // Update state with accounts saved so far
+              setSmtpAccounts([...smtpAccounts, ...savedAccounts]);
+              localStorage.setItem(`outboundflow_smtp_${user.id}`, JSON.stringify([...smtpAccounts, ...savedAccounts]));
+              throw new Error(`Account "${account.label}" timed out. Other accounts were saved. Try adding this one again.`);
+            }
+            
             errors.push(accountError.message || `Error saving ${account.label}`);
             // Re-throw to stop processing
             throw accountError;
           }
         }
-        
+
         // Delete accounts that were removed
         const updatedIds = updated.map(a => a.id);
         const toDelete = smtpAccounts.filter(a => !updatedIds.includes(a.id));
@@ -362,20 +417,38 @@ const AppContent: React.FC = () => {
             console.error(`[saveSmtp] Error deleting account ${account.id}:`, deleteError);
           }
         }
-        
+
         // Reload from database to ensure we have the latest data with correct IDs
-        try {
-          console.log('[saveSmtp] Reloading accounts from database...');
-          const reloadedAccounts = await smtpService.getAll(user.id);
-          console.log('[saveSmtp] Reloaded accounts:', reloadedAccounts.length);
-          setSmtpAccounts(reloadedAccounts);
-        } catch (reloadError: any) {
-          console.error('[saveSmtp] Error reloading SMTP accounts:', reloadError);
-          // Fallback to saved accounts if reload fails
-          setSmtpAccounts(savedAccounts);
-          throw new Error(`Failed to reload accounts: ${reloadError.message}`);
-        }
+        // For better performance, only reload after creating new accounts
+        const hasNewAccounts = updated.some(acc => !smtpAccounts.find(existing => existing.id === acc.id));
         
+        if (hasNewAccounts && savedAccounts.length > 0) {
+          try {
+            console.log('[saveSmtp] Reloading accounts from database...');
+            const reloadedAccounts = await smtpService.getAll(user.id);
+            console.log('[saveSmtp] Reloaded accounts:', reloadedAccounts.length);
+            
+            // Also save to localStorage as backup
+            localStorage.setItem(`outboundflow_smtp_${user.id}`, JSON.stringify(reloadedAccounts));
+            console.log('[saveSmtp] Saved to localStorage as backup');
+            
+            setSmtpAccounts(reloadedAccounts);
+            console.log('[saveSmtp] State updated successfully');
+          } catch (reloadError: any) {
+            console.error('[saveSmtp] Error reloading SMTP accounts:', reloadError);
+            // Fallback to saved accounts if reload fails
+            setSmtpAccounts(savedAccounts);
+            // Save to localStorage even if Supabase reload fails
+            localStorage.setItem(`outboundflow_smtp_${user.id}`, JSON.stringify(savedAccounts));
+            console.log('[saveSmtp] Using saved accounts as fallback');
+          }
+        } else {
+          // No new accounts created, just use savedAccounts (faster)
+          console.log('[saveSmtp] No reload needed, using saved accounts');
+          setSmtpAccounts(savedAccounts);
+          localStorage.setItem(`outboundflow_smtp_${user.id}`, JSON.stringify(savedAccounts));
+        }
+
         if (errors.length > 0) {
           console.warn('[saveSmtp] Some errors occurred:', errors);
         }
@@ -386,10 +459,14 @@ const AppContent: React.FC = () => {
         setSmtpAccounts(updated);
       }
     } catch (error: any) {
+      const msg = error?.message || '';
+      if (msg === 'SUPABASE_OFFLINE_SAVED_LOCALLY') {
+        // Already saved to localStorage; let the UI show success toast
+        throw error;
+      }
       console.error('[saveSmtp] Error saving SMTP accounts:', error);
-      const errorMessage = error.message || 'Unknown error occurred';
-      alert(`Error saving SMTP accounts: ${errorMessage}\n\nCheck browser console for details.`);
-      throw error; // Re-throw so the UI can handle it
+      alert(`Error saving SMTP accounts: ${msg}\n\nCheck browser console for details.`);
+      throw error;
     }
   };
 
@@ -397,8 +474,8 @@ const AppContent: React.FC = () => {
     if (selectedCampaignId) {
       const campaign = campaigns.find(c => c.id === selectedCampaignId);
       if (!campaign) return (
-        <CampaignList 
-          campaigns={campaigns} 
+        <CampaignList
+          campaigns={campaigns}
           onSelect={setSelectedCampaignId}
           onClone={async (clonedCampaign) => {
             try {
@@ -434,7 +511,7 @@ const AppContent: React.FC = () => {
                 steps: [{ id: 's' + Date.now(), order: 1, delayDays: 0, delayHours: 0, delayMinutes: 0, webhookUrl: '' }],
                 schedule: { days: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "17:00", timezone: "UTC", enabled: false, type: 'DAILY' },
               };
-            
+
               if (user) {
                 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
                 if (supabaseUrl) {
@@ -478,41 +555,41 @@ const AppContent: React.FC = () => {
         />
       );
       return (
-        <CampaignEditor 
-          campaign={campaign} 
+        <CampaignEditor
+          campaign={campaign}
           smtpAccounts={smtpAccounts}
           onSave={async (c) => {
             try {
               console.log('[onSave] Saving campaign:', { id: c.id, name: c.name });
-              
+
               if (user) {
                 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
                 if (supabaseUrl) {
                   // Update campaign in Supabase with timeout
                   console.log('[onSave] Updating campaign in Supabase...');
-                  
+
                   // Add timeout wrapper - increase timeout for campaigns with many leads
                   // For campaigns with 0 leads, use shorter timeout (20 seconds)
                   // For campaigns with leads: 100ms per lead + 10 seconds base time
-                  const estimatedTime = c.leads.length === 0 
+                  const estimatedTime = c.leads.length === 0
                     ? 20000  // 20 seconds for campaigns with no leads
                     : Math.max(60000, (c.leads.length * 100) + 10000); // Minimum 60 seconds for campaigns with leads
                   console.log(`[onSave] Estimated save time: ${estimatedTime}ms for ${c.leads.length} leads`);
-                  
+
                   const updatePromise = campaignService.update(c);
-                  const timeoutPromise = new Promise<null>((_, reject) => 
-                    setTimeout(() => reject(new Error(`Save operation timed out after ${Math.floor(estimatedTime/1000)} seconds. Large campaigns may take longer.`)), estimatedTime)
+                  const timeoutPromise = new Promise<null>((_, reject) =>
+                    setTimeout(() => reject(new Error(`Save operation timed out after ${Math.floor(estimatedTime / 1000)} seconds. Large campaigns may take longer.`)), estimatedTime)
                   );
-                  
+
                   const updated = await Promise.race([updatePromise, timeoutPromise]);
-                  
+
                   if (updated) {
                     console.log('[onSave] Campaign updated successfully:', updated.id);
                     console.log('[onSave] Updated campaign leads:', updated.leads.map(l => ({ email: l.email, status: l.status })));
                     // Campaign was saved successfully, use the updated version
                     const index = campaigns.findIndex(existing => existing.id === c.id);
                     const newCampaigns = [...campaigns];
-                    
+
                     if (index >= 0) {
                       newCampaigns[index] = updated;
                       console.log('[onSave] Updated campaign in state at index:', index);
@@ -593,8 +670,8 @@ const AppContent: React.FC = () => {
     switch (activeTab) {
       case 'dashboard': return <Dashboard campaigns={campaigns} />;
       case 'campaigns': return (
-        <CampaignList 
-          campaigns={campaigns} 
+        <CampaignList
+          campaigns={campaigns}
           onSelect={setSelectedCampaignId}
           onClone={async (clonedCampaign) => {
             try {
@@ -630,7 +707,7 @@ const AppContent: React.FC = () => {
                 steps: [{ id: 's' + Date.now(), order: 1, delayDays: 0, delayHours: 0, delayMinutes: 0, webhookUrl: '' }],
                 schedule: { days: [1, 2, 3, 4, 5], startTime: "09:00", endTime: "17:00", timezone: "UTC", enabled: false, type: 'DAILY' },
               };
-            
+
               if (user) {
                 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
                 if (supabaseUrl) {
@@ -676,20 +753,20 @@ const AppContent: React.FC = () => {
       case 'leads': return <LeadManager campaigns={campaigns} userId={user?.id} onUpdateLeads={async (campaignId, leads) => {
         const updated = campaigns.map(c => c.id === campaignId ? { ...c, leads } : c);
         setCampaigns(updated);
-        
+
         if (user) {
           const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
           if (supabaseUrl) {
             try {
               console.log('[onUpdateLeads] Updating leads in database...', { campaignId, leadCount: leads.length });
-              
+
               // Only update leads in database - don't do full campaign update
               // Full campaign update is expensive and causes timeouts
               const leadsUpdated = await campaignService.updateLeads(campaignId, leads);
               if (!leadsUpdated) {
                 throw new Error('Failed to update leads in database');
               }
-              
+
               console.log('[onUpdateLeads] Leads updated successfully');
               // Don't call campaignService.update() here - it's redundant and slow
               // The leads are already saved, and full campaign sync happens on explicit save
@@ -704,11 +781,11 @@ const AppContent: React.FC = () => {
           }
         }
       }} />;
-      case 'inbox': return <Inbox 
-          emails={receivedEmails} 
-          userId={user?.id}
-          smtpAccounts={smtpAccounts}
-          onUpdateEmails={async (updated) => {
+      case 'inbox': return <Inbox
+        emails={receivedEmails}
+        userId={user?.id}
+        smtpAccounts={smtpAccounts}
+        onUpdateEmails={async (updated) => {
           // If Supabase is configured, reload emails from database
           // Otherwise, update local state
           if (user) {
@@ -731,7 +808,7 @@ const AppContent: React.FC = () => {
           } else {
             setReceivedEmails(updated);
           }
-      }} />;
+        }} />;
       case 'settings': return <SettingsView accounts={smtpAccounts} onUpdateAccounts={saveSmtp} />;
       default: return <Dashboard campaigns={campaigns} />;
     }
@@ -812,7 +889,7 @@ const AppContent: React.FC = () => {
             </div>
           </div>
           {/* Logout Button */}
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-3 px-3 py-2 text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 rounded-lg transition-colors"
           >
@@ -838,13 +915,12 @@ const App: React.FC = () => {
 };
 
 const NavItem: React.FC<{ icon: React.ReactNode; label: string; active?: boolean; onClick: () => void; }> = ({ icon, label, active, onClick }) => (
-  <button 
-    onClick={onClick} 
-    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold ${
-      active 
-        ? 'bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-600 dark:to-blue-700 text-white shadow-lg transform scale-[1.02]' 
-        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100'
-    }`}
+  <button
+    onClick={onClick}
+    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 font-bold ${active
+      ? 'bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-600 dark:to-blue-700 text-white shadow-lg transform scale-[1.02]'
+      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100'
+      }`}
   >
     <span className={active ? 'text-white' : ''}>{icon}</span>
     <span className="text-sm">{label}</span>
